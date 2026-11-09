@@ -20,10 +20,16 @@ import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.MeteringPoint
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.label.ImageLabeling
+import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -91,6 +97,7 @@ fun CameraScreen(hasPermission: Boolean) {
     var shutterMs by remember { mutableFloatStateOf(10f) }
     var manualFocusDistance by remember { mutableFloatStateOf(0f) }
     var manualExposureEnabled by remember { mutableStateOf(false) }
+    var detectedScene by remember { mutableStateOf("ANALISANDO CENA…") }
 
     if (!hasPermission) {
         Box(Modifier.fillMaxSize().background(Dark), contentAlignment = Alignment.Center) {
@@ -110,6 +117,9 @@ fun CameraScreen(hasPermission: Boolean) {
         previewView = view
         val future = ProcessCameraProvider.getInstance(context)
         var provider: ProcessCameraProvider? = null
+        val analysisExecutor = Executors.newSingleThreadExecutor()
+        val analysisBusy = AtomicBoolean(false)
+        val labeler = ImageLabeling.getClient(ImageLabelerOptions.DEFAULT_OPTIONS)
         future.addListener({
             try {
                 provider = future.get()
@@ -122,9 +132,34 @@ fun CameraScreen(hasPermission: Boolean) {
                 val capture = ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                     .build()
+                val analysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setTargetResolution(android.util.Size(640, 480))
+                    .build()
+                analysis.setAnalyzer(analysisExecutor) { proxy ->
+                    val mediaImage = proxy.image
+                    if (mediaImage == null || !analysisBusy.compareAndSet(false, true)) {
+                        proxy.close()
+                    } else {
+                        val input = InputImage.fromMediaImage(mediaImage, proxy.imageInfo.rotationDegrees)
+                        labeler.process(input)
+                            .addOnSuccessListener(ContextCompat.getMainExecutor(context)) { labels ->
+                                val names = labels.sortedByDescending { it.confidence }
+                                    .take(5).map { it.text.lowercase() }
+                                detectedScene = classifyScene(names)
+                            }
+                            .addOnFailureListener(ContextCompat.getMainExecutor(context)) {
+                                detectedScene = "IA INDISPONÍVEL"
+                            }
+                            .addOnCompleteListener {
+                                analysisBusy.set(false)
+                                proxy.close()
+                            }
+                    }
+                }
                 activeProvider.unbindAll()
                 val bound = activeProvider.bindToLifecycle(
-                    lifecycleOwner, selector, preview, capture
+                    lifecycleOwner, selector, preview, capture, analysis
                 )
                 imageCapture = capture
                 camera = bound
@@ -200,6 +235,8 @@ fun CameraScreen(hasPermission: Boolean) {
         onDispose {
             view.setOnTouchListener(null)
             try { provider?.unbindAll() } catch (_: Exception) { }
+            analysisExecutor.shutdown()
+            labeler.close()
             camera = null
             imageCapture = null
         }
@@ -261,6 +298,13 @@ fun CameraScreen(hasPermission: Boolean) {
                         camera?.cameraControl?.enableTorch(torchEnabled)
                     } else status = "FLASH NÃO DISPONÍVEL NESTA CÂMERA"
                 }
+            }
+            Surface(
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 62.dp),
+                color = Color(0xDD090A0C), shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("IA • $detectedScene", color = Gold,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = 10.sp)
             }
             Surface(
                 modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
@@ -495,6 +539,21 @@ fun CameraScreen(hasPermission: Boolean) {
             }
             Text(status, color = Gold, fontSize = 9.sp, modifier = Modifier.padding(top = 6.dp))
         }
+    }
+}
+
+private fun classifyScene(labels: List<String>): String {
+    val text = labels.joinToString(" ")
+    return when {
+        listOf("person", "human face", "face", "portrait").any { it in text } -> "RETRATO"
+        listOf("night", "darkness", "nightclub", "moon").any { it in text } -> "BAIXA LUMINOSIDADE"
+        listOf("food", "dish", "fruit", "cuisine").any { it in text } -> "COMIDA"
+        listOf("animal", "dog", "cat", "bird", "mammal").any { it in text } -> "ANIMAL"
+        listOf("flower", "plant", "tree", "vegetation").any { it in text } -> "NATUREZA"
+        listOf("landscape", "mountain", "beach", "sky", "water").any { it in text } -> "PAISAGEM"
+        listOf("document", "text", "paper").any { it in text } -> "DOCUMENTO/TEXTO"
+        listOf("car", "vehicle", "motorcycle", "truck").any { it in text } -> "VEÍCULO"
+        else -> labels.firstOrNull()?.replaceFirstChar { it.uppercase() } ?: "CENA NÃO IDENTIFICADA"
     }
 }
 
