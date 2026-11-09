@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CaptureRequest
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.MotionEvent
@@ -13,6 +14,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
@@ -81,6 +84,13 @@ fun CameraScreen(hasPermission: Boolean) {
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
     var gridEnabled by remember { mutableStateOf(false) }
     var camera2Summary by remember { mutableStateOf("ANALISANDO CAMERA2…") }
+    var isoRange by remember { mutableStateOf<IntRange?>(null) }
+    var shutterRangeNs by remember { mutableStateOf<LongRange?>(null) }
+    var minimumFocusDistance by remember { mutableFloatStateOf(0f) }
+    var isoValue by remember { mutableFloatStateOf(100f) }
+    var shutterMs by remember { mutableFloatStateOf(10f) }
+    var manualFocusDistance by remember { mutableFloatStateOf(0f) }
+    var manualExposureEnabled by remember { mutableStateOf(false) }
 
     if (!hasPermission) {
         Box(Modifier.fillMaxSize().background(Dark), contentAlignment = Alignment.Center) {
@@ -123,10 +133,20 @@ fun CameraScreen(hasPermission: Boolean) {
                     val iso = info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
                     val exposure = info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
                     val focus = info.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
+                    isoRange = iso?.let { it.lower..it.upper }
+                    shutterRangeNs = exposure?.let { it.lower..it.upper }
+                    minimumFocusDistance = focus
+                    isoValue = (iso?.lower?.coerceAtLeast(100) ?: 100).toFloat()
+                    shutterMs = ((exposure?.lower ?: 10_000_000L) / 1_000_000f).coerceAtLeast(0.01f)
+                    manualFocusDistance = 0f
+                    manualExposureEnabled = false
                     camera2Summary = "ISO " + (if (iso != null) iso.lower.toString() + "–" + iso.upper else "indisponível") +
                         " • obturador " + (if (exposure != null) "disponível" else "indisponível") +
                         " • foco manual " + (if (focus > 0f) "disponível" else "indisponível")
                 } catch (_: Exception) {
+                    isoRange = null
+                    shutterRangeNs = null
+                    minimumFocusDistance = 0f
                     camera2Summary = "RECURSOS CAMERA2 NÃO EXPOSTOS PELO SISTEMA"
                 }
                 val state = bound.cameraInfo.zoomState.value
@@ -308,6 +328,93 @@ fun CameraScreen(hasPermission: Boolean) {
 
             if (mode == "PRO") {
                 Text(camera2Summary, color = Gold, fontSize = 9.sp)
+                val active = camera
+                val isoLimits = isoRange
+                val shutterLimits = shutterRangeNs
+                val camera2Control = active?.cameraControl?.let { Camera2CameraControl.from(it) }
+                if (isoLimits != null && shutterLimits != null) {
+                    Text("ISO: ${isoValue.toInt()}", color = Muted, fontSize = 10.sp)
+                    Slider(
+                        value = isoValue.coerceIn(isoLimits.first.toFloat(), isoLimits.last.toFloat()),
+                        onValueChange = { isoValue = it },
+                        valueRange = isoLimits.first.toFloat()..isoLimits.last.toFloat(),
+                        colors = SliderDefaults.colors(thumbColor = Gold, activeTrackColor = Gold)
+                    )
+                    val minMs = (shutterLimits.first / 1_000_000f).coerceAtLeast(0.001f)
+                    val maxMs = (shutterLimits.last / 1_000_000f).coerceAtLeast(minMs + 0.001f)
+                    Text("OBTURADOR: ${String.format("%.2f", shutterMs)} ms", color = Muted, fontSize = 10.sp)
+                    Slider(
+                        value = shutterMs.coerceIn(minMs, maxMs),
+                        onValueChange = { shutterMs = it },
+                        valueRange = minMs..maxMs,
+                        colors = SliderDefaults.colors(thumbColor = Gold, activeTrackColor = Gold)
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                try {
+                                    camera2Control?.setCaptureRequestOptions(
+                                        CaptureRequestOptions.Builder()
+                                            .setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                                            .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                                            .build()
+                                    )
+                                    manualExposureEnabled = false
+                                    status = "EXPOSIÇÃO AUTOMÁTICA ATIVADA"
+                                } catch (_: Exception) { status = "NÃO FOI POSSÍVEL ATIVAR AUTO" }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("AUTO", color = Color.White) }
+                        Button(
+                            onClick = {
+                                try {
+                                    val isoNow = isoValue.toInt().coerceIn(isoLimits.first, isoLimits.last)
+                                    val timeNow = (shutterMs * 1_000_000f).toLong().coerceIn(shutterLimits.first, shutterLimits.last)
+                                    camera2Control?.setCaptureRequestOptions(
+                                        CaptureRequestOptions.Builder()
+                                            .setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+                                            .setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, isoNow)
+                                            .setCaptureRequestOption(CaptureRequest.SENSOR_EXPOSURE_TIME, timeNow)
+                                            .build()
+                                    )
+                                    manualExposureEnabled = true
+                                    status = "ISO E OBTURADOR APLICADOS"
+                                } catch (_: Exception) { status = "CONTROLE MANUAL NÃO SUPORTADO NESTA LENTE" }
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Gold)
+                        ) { Text("APLICAR", color = Color.Black) }
+                    }
+                } else {
+                    Text("ISO/OBTURADOR MANUAIS NÃO DISPONÍVEIS NESTA CÂMERA", color = Muted, fontSize = 9.sp)
+                }
+                if (minimumFocusDistance > 0f) {
+                    Text(
+                        if (manualFocusDistance <= 0f) "FOCO: AUTO" else "FOCO MANUAL: ${String.format("%.2f", manualFocusDistance)} D",
+                        color = Muted, fontSize = 10.sp
+                    )
+                    Slider(
+                        value = manualFocusDistance.coerceIn(0f, minimumFocusDistance),
+                        onValueChange = { manualFocusDistance = it },
+                        onValueChangeFinished = {
+                            try {
+                                val afMode = if (manualFocusDistance <= 0f)
+                                    CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE else CaptureRequest.CONTROL_AF_MODE_OFF
+                                camera2Control?.setCaptureRequestOptions(
+                                    CaptureRequestOptions.Builder()
+                                        .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, afMode)
+                                        .setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, manualFocusDistance)
+                                        .build()
+                                )
+                                status = if (manualFocusDistance <= 0f) "FOCO AUTOMÁTICO" else "FOCO MANUAL APLICADO"
+                            } catch (_: Exception) { status = "FOCO MANUAL NÃO SUPORTADO NESTA LENTE" }
+                        },
+                        valueRange = 0f..minimumFocusDistance,
+                        colors = SliderDefaults.colors(thumbColor = Gold, activeTrackColor = Gold)
+                    )
+                } else {
+                    Text("FOCO MANUAL NÃO DISPONÍVEL NESTA CÂMERA", color = Muted, fontSize = 9.sp)
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("EXPOSIÇÃO", color = Muted, fontSize = 10.sp)
                     Text("${if (exposureEv >= 0) "+" else ""}${String.format("%.1f", exposureEv)} EV",
