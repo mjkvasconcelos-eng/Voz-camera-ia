@@ -2,21 +2,26 @@ package com.vozcam.ia
 
 import android.Manifest
 import android.content.ContentValues
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.MediaStore
+import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.MeteringPoint
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,14 +29,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
 
 private val Gold = Color(0xFFD6A84F)
-private val Dark = Color(0xFF090909)
+private val Dark = Color(0xFF08090B)
+private val Panel = Color(0xFF17191D)
+private val Muted = Color(0xFF9A9DA3)
 
 class MainActivity : ComponentActivity() {
     private val permissionLauncher =
@@ -52,12 +62,19 @@ class MainActivity : ComponentActivity() {
 fun CameraScreen(hasPermission: Boolean) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var mode by remember { mutableStateOf("IA AUTOMÁTICA") }
+    var mode by remember { mutableStateOf("AUTO") }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var camera by remember { mutableStateOf<Camera?>(null) }
-    var exposure by remember { mutableFloatStateOf(0f) }
-    var status by remember { mutableStateOf("Pronto para fotografar") }
+    var exposureIndex by remember { mutableIntStateOf(0) }
+    var status by remember { mutableStateOf("CÂMERA PRONTA") }
     var backCamera by remember { mutableStateOf(true) }
+    var torchEnabled by remember { mutableStateOf(false) }
+    var zoom by remember { mutableFloatStateOf(1f) }
+    var minZoom by remember { mutableFloatStateOf(1f) }
+    var maxZoom by remember { mutableFloatStateOf(1f) }
+    var evMin by remember { mutableIntStateOf(-3) }
+    var evMax by remember { mutableIntStateOf(3) }
+    var previewView by remember { mutableStateOf<PreviewView?>(null) }
 
     if (!hasPermission) {
         Box(Modifier.fillMaxSize().background(Dark), contentAlignment = Alignment.Center) {
@@ -66,118 +83,212 @@ fun CameraScreen(hasPermission: Boolean) {
         return
     }
 
+    val view = remember(context) {
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        }
+    }
+
+    DisposableEffect(view, backCamera) {
+        previewView = view
+        val future = ProcessCameraProvider.getInstance(context)
+        var provider: ProcessCameraProvider? = null
+        future.addListener({
+            try {
+                provider = future.get()
+                val activeProvider = provider ?: return@addListener
+                val selector = if (backCamera) CameraSelector.DEFAULT_BACK_CAMERA
+                    else CameraSelector.DEFAULT_FRONT_CAMERA
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(view.surfaceProvider)
+                }
+                val capture = ImageCapture.Builder()
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                    .build()
+                activeProvider.unbindAll()
+                val bound = activeProvider.bindToLifecycle(
+                    lifecycleOwner, selector, preview, capture
+                )
+                imageCapture = capture
+                camera = bound
+                val state = bound.cameraInfo.zoomState.value
+                if (state != null) {
+                    minZoom = state.minZoomRatio
+                    maxZoom = state.maxZoomRatio
+                    zoom = 1f.coerceIn(minZoom, maxZoom)
+                }
+                val range = bound.cameraInfo.exposureState.exposureCompensationRange
+                evMin = range.lower
+                evMax = range.upper
+                exposureIndex = 0.coerceIn(evMin, evMax)
+                status = if (backCamera) "CÂMERA TRASEIRA ATIVA" else "CÂMERA FRONTAL ATIVA"
+                view.setOnTouchListener { _, event ->
+                    if (event.action == MotionEvent.ACTION_UP) {
+                        val point: MeteringPoint = view.meteringPointFactory
+                            .createPoint(event.x, event.y)
+                        val action = FocusMeteringAction.Builder(point)
+                            .setAutoCancelDuration(3, TimeUnit.SECONDS)
+                            .build()
+                        bound.cameraControl.startFocusAndMetering(action)
+                        status = "FOCO AJUSTADO"
+                    }
+                    true
+                }
+            } catch (e: Exception) {
+                status = "FALHA AO INICIAR: ${e.message ?: "câmera indisponível"}"
+            }
+        }, ContextCompat.getMainExecutor(context))
+
+        onDispose {
+            view.setOnTouchListener(null)
+            try { provider?.unbindAll() } catch (_: Exception) { }
+            camera = null
+            imageCapture = null
+        }
+    }
+
+    val activeCamera = camera
+    val exposureStep = activeCamera?.cameraInfo?.exposureState?.exposureCompensationStep?.toFloat() ?: 0.0f
+    val exposureEv = exposureIndex * exposureStep
+
     Column(Modifier.fillMaxSize().background(Dark)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                Text("VOZ CÂMERA", color = Color.White, fontSize = 22.sp)
-                Text("INTELIGÊNCIA FOTOGRÁFICA", color = Gold, fontSize = 10.sp)
+                Text("VOZ CÂMERA IA", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("GALAXY S24 ULTRA • PRO CAMERA", color = Gold, fontSize = 9.sp, letterSpacing = 1.2.sp)
             }
-            Text("IA", color = Gold, fontSize = 20.sp)
+            Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
+                Text(if (mode == "AUTO") "● AUTO IA" else "● PRO", color = Gold,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp), fontSize = 10.sp)
+            }
         }
 
-        Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp)) {
+        Box(
+            Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
+        ) {
             AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    val previewView = PreviewView(ctx).apply {
-                        scaleType = PreviewView.ScaleType.FILL_CENTER
-                    }
-                    val providerFuture = ProcessCameraProvider.getInstance(ctx)
-                    providerFuture.addListener({
-                        val provider = providerFuture.get()
-                        val preview = Preview.Builder().build().also {
-                            it.setSurfaceProvider(previewView.surfaceProvider)
-                        }
-                        val capture = ImageCapture.Builder()
-                            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-                            .build()
-                        val selector = if (backCamera) CameraSelector.DEFAULT_BACK_CAMERA
-                            else CameraSelector.DEFAULT_FRONT_CAMERA
-                        try {
-                            provider.unbindAll()
-                            val bound = provider.bindToLifecycle(
-                                lifecycleOwner, selector, preview, capture
-                            )
-                            imageCapture = capture
-                            camera = bound
-                        } catch (e: Exception) {
-                            status = "Não foi possível iniciar a câmera"
-                        }
-                    }, ContextCompat.getMainExecutor(ctx))
-                    previewView
-                },
-                update = { }
+                factory = { view },
+                modifier = Modifier.fillMaxSize()
             )
-            Surface(
-                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
-                color = Color(0xAA111111),
-                shape = RoundedCornerShape(10.dp)
+            Row(
+                Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(Modifier.padding(10.dp)) {
-                    Text(mode, color = Gold, fontSize = 11.sp)
-                    Text(
-                        if (mode == "IA AUTOMÁTICA") "Ajuste de exposição assistido"
-                        else "Controle de exposição",
-                        color = Color.White,
-                        fontSize = 10.sp
+                SmallControl("⟲", "VIRAR") { backCamera = !backCamera; torchEnabled = false }
+                SmallControl(if (torchEnabled) "⚡" else "ϟ", if (torchEnabled) "FLASH ON" else "FLASH") {
+                    val hasFlash = camera?.cameraInfo?.hasFlashUnit() == true
+                    if (hasFlash) {
+                        torchEnabled = !torchEnabled
+                        camera?.cameraControl?.enableTorch(torchEnabled)
+                    } else status = "FLASH NÃO DISPONÍVEL NESTA CÂMERA"
+                }
+            }
+            Surface(
+                modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+                color = Color(0xCC090A0C), shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("TOQUE NA IMAGEM PARA FOCAR", color = Color.White,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp), fontSize = 9.sp)
+            }
+        }
+
+        Column(
+            Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                listOf("AUTO", "PRO").forEach { item ->
+                    FilterChip(
+                        selected = mode == item,
+                        onClick = { mode = item },
+                        label = { Text(if (item == "AUTO") "IA AUTOMÁTICA" else "PROFISSIONAL") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Gold,
+                            selectedLabelColor = Color.Black,
+                            labelColor = Color.White
+                        ),
+                        modifier = Modifier.padding(horizontal = 5.dp)
                     )
                 }
             }
-        }
 
-        Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = mode == "IA AUTOMÁTICA",
-                    onClick = { mode = "IA AUTOMÁTICA" },
-                    label = { Text("IA automática") }
-                )
-                FilterChip(
-                    selected = mode == "PROFISSIONAL",
-                    onClick = { mode = "PROFISSIONAL" },
-                    label = { Text("Profissional") }
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            Text("Exposição  ${"%.1f".format(exposure)} EV", color = Color.White)
-            Slider(
-                value = exposure,
-                onValueChange = {
-                    exposure = it
-                    camera?.cameraControl?.setExposureCompensationIndex(
-                        it.toInt().coerceIn(
-                            camera?.cameraInfo?.exposureState?.exposureCompensationRange?.lower ?: -3,
-                            camera?.cameraInfo?.exposureState?.exposureCompensationRange?.upper ?: 3
-                        )
-                    )
-                },
-                valueRange = -3f..3f,
-                colors = SliderDefaults.colors(
-                    thumbColor = Gold,
-                    activeTrackColor = Gold
-                )
-            )
-            Text(status, color = Color.LightGray, fontSize = 11.sp)
-            Spacer(Modifier.height(8.dp))
+            Text("ZOOM", color = Muted, fontSize = 9.sp, letterSpacing = 1.5.sp)
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                listOf(0.6f, 1f, 3f, 5f).forEach { factor ->
+                    val available = factor >= minZoom && factor <= maxZoom
+                    val label = if (factor == 0.6f) "0.6×" else "${factor.toInt()}×"
+                    TextButton(
+                        enabled = available,
+                        onClick = {
+                            zoom = factor
+                            camera?.cameraControl?.setZoomRatio(factor)
+                        }
+                    ) {
+                        Text(label, color = if (kotlin.math.abs(zoom - factor) < 0.05f) Gold
+                            else if (available) Color.White else Muted.copy(alpha = 0.35f),
+                            fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            if (maxZoom > minZoom) {
+                Slider(
+                    value = zoom.coerceIn(minZoom, maxZoom),
+                    onValueChange = {
+                        zoom = it
+                        camera?.cameraControl?.setZoomRatio(it)
+                    },
+                    valueRange = minZoom..maxZoom,
+                    colors = SliderDefaults.colors(thumbColor = Gold, activeTrackColor = Gold)
+                )
+            }
+
+            if (mode == "PRO") {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("EXPOSIÇÃO", color = Muted, fontSize = 10.sp)
+                    Text("${if (exposureEv >= 0) "+" else ""}${String.format("%.1f", exposureEv)} EV",
+                        color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Slider(
+                    value = exposureIndex.toFloat().coerceIn(evMin.toFloat(), evMax.toFloat()),
+                    onValueChange = {
+                        exposureIndex = it.roundToInt()
+                        camera?.cameraControl?.setExposureCompensationIndex(exposureIndex)
+                    },
+                    valueRange = evMin.toFloat()..evMax.toFloat(),
+                    colors = SliderDefaults.colors(thumbColor = Gold, activeTrackColor = Gold)
+                )
+            } else {
+                Text("AJUSTES AUTOMÁTICOS DA CÂMERA", color = Muted, fontSize = 10.sp)
+            }
+
+            Row(
+                Modifier.fillMaxWidth().padding(top = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 TextButton(onClick = {
-                    backCamera = !backCamera
-                    status = "Para trocar a câmera, reinicie a visualização nesta versão inicial."
-                }) { Text("Virar câmera", color = Color.White) }
+                    exposureIndex = 0
+                    camera?.cameraControl?.setExposureCompensationIndex(0)
+                    zoom = 1f.coerceIn(minZoom, maxZoom)
+                    camera?.cameraControl?.setZoomRatio(zoom)
+                    status = "CONFIGURAÇÕES REINICIADAS"
+                }) { Text("REINICIAR", color = Muted, fontSize = 10.sp) }
 
                 Button(
                     onClick = {
                         val capture = imageCapture
                         if (capture == null) {
-                            status = "Câmera ainda inicializando"
+                            status = "AGUARDE A CÂMERA INICIAR"
                         } else {
                             val name = "VozCamera_${System.currentTimeMillis()}.jpg"
                             val values = ContentValues().apply {
@@ -190,30 +301,48 @@ fun CameraScreen(hasPermission: Boolean) {
                                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                                 values
                             ).build()
+                            status = "CAPTURANDO..."
                             capture.takePicture(
                                 output,
                                 ContextCompat.getMainExecutor(context),
                                 object : ImageCapture.OnImageSavedCallback {
                                     override fun onImageSaved(result: ImageCapture.OutputFileResults) {
-                                        status = "Foto salva em Pictures/VozCameraIA"
+                                        status = "FOTO SALVA • GALERIA/VOZCAMERAIA"
                                     }
                                     override fun onError(exception: ImageCaptureException) {
-                                        status = "Erro ao salvar: ${exception.message}"
+                                        status = "ERRO AO FOTOGRAFAR: ${exception.message}"
                                     }
                                 }
                             )
-                            status = "Capturando fotografia..."
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Gold),
-                    shape = RoundedCornerShape(50),
-                    modifier = Modifier.size(76.dp)
+                    shape = CircleShape,
+                    modifier = Modifier.size(68.dp),
+                    contentPadding = PaddingValues(0.dp)
                 ) {
-                    Text("FOTO", color = Color.Black, fontSize = 12.sp)
+                    Box(Modifier.size(52.dp).background(Gold, CircleShape), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(43.dp).background(Color.White, CircleShape))
+                    }
                 }
-                TextButton(onClick = { exposure = 0f; camera?.cameraControl?.setExposureCompensationIndex(0) }) {
-                    Text("Reset EV", color = Color.White)
-                }
+
+                TextButton(onClick = {
+                    backCamera = !backCamera
+                    torchEnabled = false
+                }) { Text("CÂMERA ${if (backCamera) "FRONTAL" else "TRASEIRA"}", color = Muted, fontSize = 10.sp) }
+            }
+            Text(status, color = Gold, fontSize = 9.sp, modifier = Modifier.padding(top = 6.dp))
+        }
+    }
+}
+
+@Composable
+private fun SmallControl(symbol: String, label: String, onClick: () -> Unit) {
+    Surface(color = Color(0xCC090A0C), shape = RoundedCornerShape(10.dp)) {
+        TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(symbol, color = Gold, fontSize = 18.sp)
+                Text(label, color = Color.White, fontSize = 8.sp)
             }
         }
     }
