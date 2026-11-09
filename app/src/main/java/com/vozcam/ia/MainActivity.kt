@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
+import android.hardware.camera2.CameraCharacteristics
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.MotionEvent
@@ -11,6 +12,7 @@ import android.view.ScaleGestureDetector
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
@@ -78,6 +80,7 @@ fun CameraScreen(hasPermission: Boolean) {
     var evMax by remember { mutableIntStateOf(3) }
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
     var gridEnabled by remember { mutableStateOf(false) }
+    var camera2Summary by remember { mutableStateOf("ANALISANDO CAMERA2…") }
 
     if (!hasPermission) {
         Box(Modifier.fillMaxSize().background(Dark), contentAlignment = Alignment.Center) {
@@ -115,6 +118,17 @@ fun CameraScreen(hasPermission: Boolean) {
                 )
                 imageCapture = capture
                 camera = bound
+                try {
+                    val info = Camera2CameraInfo.from(bound.cameraInfo)
+                    val iso = info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
+                    val exposure = info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
+                    val focus = info.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
+                    camera2Summary = "ISO " + (if (iso != null) iso.lower.toString() + "–" + iso.upper else "indisponível") +
+                        " • obturador " + (if (exposure != null) "disponível" else "indisponível") +
+                        " • foco manual " + (if (focus > 0f) "disponível" else "indisponível")
+                } catch (_: Exception) {
+                    camera2Summary = "RECURSOS CAMERA2 NÃO EXPOSTOS PELO SISTEMA"
+                }
                 val state = bound.cameraInfo.zoomState.value
                 if (state != null) {
                     minZoom = state.minZoomRatio
@@ -293,6 +307,7 @@ fun CameraScreen(hasPermission: Boolean) {
             }
 
             if (mode == "PRO") {
+                Text(camera2Summary, color = Gold, fontSize = 9.sp)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("EXPOSIÇÃO", color = Muted, fontSize = 10.sp)
                     Text("${if (exposureEv >= 0) "+" else ""}${String.format("%.1f", exposureEv)} EV",
