@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,6 +20,7 @@ import androidx.camera.core.MeteringPoint
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -75,6 +77,7 @@ fun CameraScreen(hasPermission: Boolean) {
     var evMin by remember { mutableIntStateOf(-3) }
     var evMax by remember { mutableIntStateOf(3) }
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
+    var gridEnabled by remember { mutableStateOf(false) }
 
     if (!hasPermission) {
         Box(Modifier.fillMaxSize().background(Dark), contentAlignment = Alignment.Center) {
@@ -123,15 +126,35 @@ fun CameraScreen(hasPermission: Boolean) {
                 evMax = range.upper
                 exposureIndex = 0.coerceIn(evMin, evMax)
                 status = if (backCamera) "CÂMERA TRASEIRA ATIVA" else "CÂMERA FRONTAL ATIVA"
+                var scalingGesture = false
+                val scaleDetector = ScaleGestureDetector(context,
+                    object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+                            scalingGesture = true
+                            return true
+                        }
+                        override fun onScale(detector: ScaleGestureDetector): Boolean {
+                            val current = bound.cameraInfo.zoomState.value?.zoomRatio ?: 1f
+                            val next = (current * detector.scaleFactor)
+                                .coerceIn(minZoom, maxZoom)
+                            bound.cameraControl.setZoomRatio(next)
+                            zoom = next
+                            return true
+                        }
+                    })
                 view.setOnTouchListener { _, event ->
+                    scaleDetector.onTouchEvent(event)
                     if (event.action == MotionEvent.ACTION_UP) {
-                        val point: MeteringPoint = view.meteringPointFactory
-                            .createPoint(event.x, event.y)
-                        val action = FocusMeteringAction.Builder(point)
-                            .setAutoCancelDuration(3, TimeUnit.SECONDS)
-                            .build()
-                        bound.cameraControl.startFocusAndMetering(action)
-                        status = "FOCO AJUSTADO"
+                        if (!scalingGesture) {
+                            val point: MeteringPoint = view.meteringPointFactory
+                                .createPoint(event.x, event.y)
+                            val action = FocusMeteringAction.Builder(point)
+                                .setAutoCancelDuration(3, TimeUnit.SECONDS)
+                                .build()
+                            bound.cameraControl.startFocusAndMetering(action)
+                            status = "FOCO AJUSTADO"
+                        }
+                        scalingGesture = false
                     }
                     true
                 }
@@ -175,11 +198,28 @@ fun CameraScreen(hasPermission: Boolean) {
                 factory = { view },
                 modifier = Modifier.fillMaxSize()
             )
+            if (gridEnabled) {
+                Canvas(Modifier.fillMaxSize()) {
+                    val lineColor = Color.White.copy(alpha = 0.48f)
+                    val stroke = 1.dp.toPx()
+                    for (i in 1..2) {
+                        val x = size.width * i / 3f
+                        val y = size.height * i / 3f
+                        drawLine(lineColor, androidx.compose.ui.geometry.Offset(x, 0f),
+                            androidx.compose.ui.geometry.Offset(x, size.height), stroke)
+                        drawLine(lineColor, androidx.compose.ui.geometry.Offset(0f, y),
+                            androidx.compose.ui.geometry.Offset(size.width, y), stroke)
+                    }
+                }
+            }
             Row(
                 Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 SmallControl("⟲", "VIRAR") { backCamera = !backCamera; torchEnabled = false }
+                SmallControl(if (gridEnabled) "▦" else "▤", "GRADE") {
+                    gridEnabled = !gridEnabled
+                }
                 SmallControl(if (torchEnabled) "⚡" else "ϟ", if (torchEnabled) "FLASH ON" else "FLASH") {
                     val hasFlash = camera?.cameraInfo?.hasFlashUnit() == true
                     if (hasFlash) {
