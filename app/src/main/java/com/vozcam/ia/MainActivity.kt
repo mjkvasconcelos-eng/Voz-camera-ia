@@ -48,6 +48,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -365,15 +367,20 @@ fun CameraScreen(hasPermission: Boolean) {
         )
     }
 
-    Column(Modifier.fillMaxSize().background(Dark)) {
+    Column(Modifier.fillMaxSize().background(Color(0xFF050608))) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column {
-                Text("VOZ CÂMERA IA", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("GALAXY S24 ULTRA • PRO CAMERA", color = Gold, fontSize = 9.sp, letterSpacing = 1.2.sp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(color = Color(0xFF202329), shape = RoundedCornerShape(13.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.45f))) {
+                    Text("V", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("VOZ CÂMERA IA", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.6.sp)
+                    Text("S24 ULTRA  •  PROFESSIONAL", color = Gold, fontSize = 8.sp, letterSpacing = 1.35.sp)
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(
@@ -406,7 +413,9 @@ fun CameraScreen(hasPermission: Boolean) {
         }
 
         Box(
-            Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)
+            Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp, vertical = 3.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
         ) {
             AndroidView(
                 factory = { view },
@@ -531,7 +540,10 @@ fun CameraScreen(hasPermission: Boolean) {
         }
 
         Column(
-            Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            Modifier.fillMaxWidth()
+                .shadow(20.dp, RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
+                .background(Color(0xFF14161A), RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -904,11 +916,16 @@ private fun classifyScene(labels: List<String>): String {
 
 @Composable
 private fun SmallControl(symbol: String, label: String, onClick: () -> Unit) {
-    Surface(color = Color(0xCC090A0C), shape = RoundedCornerShape(10.dp)) {
+    Surface(
+        color = Color(0xE6101216),
+        shape = RoundedCornerShape(13.dp),
+        shadowElevation = 8.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.13f))
+    ) {
         TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(symbol, color = Gold, fontSize = 18.sp)
-                Text(label, color = Color.White, fontSize = 8.sp)
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(symbol, color = Gold, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Text(label, color = Color.White.copy(alpha = 0.88f), fontSize = 7.sp, letterSpacing = 0.35.sp)
             }
         }
     }
