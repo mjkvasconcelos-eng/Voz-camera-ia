@@ -100,6 +100,8 @@ fun CameraScreen(hasPermission: Boolean) {
     var detectedScene by remember { mutableStateOf("ANALISANDO CENA…") }
     var showHardwareReport by remember { mutableStateOf(false) }
     var hardwareReport by remember { mutableStateOf<List<CameraLensInfo>>(emptyList()) }
+    var showLensPicker by remember { mutableStateOf(false) }
+    var selectedCameraId by remember { mutableStateOf<String?>(null) }
 
     if (!hasPermission) {
         Box(Modifier.fillMaxSize().background(Dark), contentAlignment = Alignment.Center) {
@@ -115,7 +117,7 @@ fun CameraScreen(hasPermission: Boolean) {
         }
     }
 
-    DisposableEffect(view, backCamera) {
+    DisposableEffect(view, backCamera, selectedCameraId) {
         previewView = view
         val future = ProcessCameraProvider.getInstance(context)
         var provider: ProcessCameraProvider? = null
@@ -126,7 +128,14 @@ fun CameraScreen(hasPermission: Boolean) {
             try {
                 provider = future.get()
                 val activeProvider = provider ?: return@addListener
-                val selector = if (backCamera) CameraSelector.DEFAULT_BACK_CAMERA
+                val selector = selectedCameraId?.let { requestedId ->
+                    CameraSelector.Builder().addCameraFilter { cameraInfos ->
+                        cameraInfos.filter { info ->
+                            try { Camera2CameraInfo.from(info).cameraId == requestedId }
+                            catch (_: Exception) { false }
+                        }
+                    }.build()
+                } ?: if (backCamera) CameraSelector.DEFAULT_BACK_CAMERA
                     else CameraSelector.DEFAULT_FRONT_CAMERA
                 val preview = Preview.Builder().build().also {
                     it.setSurfaceProvider(view.surfaceProvider)
@@ -248,6 +257,18 @@ fun CameraScreen(hasPermission: Boolean) {
     if (showHardwareReport) {
         CameraHardwareReportDialog(cameras = hardwareReport, onDismiss = { showHardwareReport = false })
     }
+    if (showLensPicker) {
+        CameraLensSelectionDialog(
+            cameras = hardwareReport.filter { it.facing == if (backCamera) "TRASEIRA" else "FRONTAL" },
+            selectedId = selectedCameraId,
+            onSelect = { id ->
+                selectedCameraId = id
+                showLensPicker = false
+                status = "TROCANDO LENTE…"
+            },
+            onDismiss = { showLensPicker = false }
+        )
+    }
     val exposureStep = activeCamera?.cameraInfo?.exposureState?.exposureCompensationStep?.toFloat() ?: 0.0f
     val exposureEv = exposureIndex * exposureStep
 
@@ -292,7 +313,7 @@ fun CameraScreen(hasPermission: Boolean) {
                 Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                SmallControl("⟲", "VIRAR") { backCamera = !backCamera; torchEnabled = false }
+                SmallControl("⟲", "VIRAR") { backCamera = !backCamera; selectedCameraId = null; torchEnabled = false }
                 SmallControl(if (gridEnabled) "▦" else "▤", "GRADE") {
                     gridEnabled = !gridEnabled
                 }
@@ -303,7 +324,11 @@ fun CameraScreen(hasPermission: Boolean) {
                         camera?.cameraControl?.enableTorch(torchEnabled)
                     } else status = "FLASH NÃO DISPONÍVEL NESTA CÂMERA"
                 }
-                SmallControl("◎", "LENTES") {
+                SmallControl("◉", "LENTES") {
+                    hardwareReport = try { readCameraHardware(context) } catch (_: Exception) { emptyList() }
+                    showLensPicker = true
+                }
+                SmallControl("ⓘ", "INFO") {
                     hardwareReport = try { readCameraHardware(context) } catch (_: Exception) { emptyList() }
                     showHardwareReport = true
                 }
@@ -543,6 +568,7 @@ fun CameraScreen(hasPermission: Boolean) {
 
                 TextButton(onClick = {
                     backCamera = !backCamera
+                    selectedCameraId = null
                     torchEnabled = false
                 }) { Text("CÂMERA ${if (backCamera) "FRONTAL" else "TRASEIRA"}", color = Muted, fontSize = 10.sp) }
             }
