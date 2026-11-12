@@ -86,6 +86,8 @@ fun CameraScreen(hasPermission: Boolean) {
     var exposureIndex by remember { mutableIntStateOf(0) }
     var whiteBalanceMode by remember { mutableIntStateOf(CaptureRequest.CONTROL_AWB_MODE_AUTO) }
     var availableWhiteBalanceModes by remember { mutableStateOf(listOf(CaptureRequest.CONTROL_AWB_MODE_AUTO)) }
+    var availableAfModes by remember { mutableStateOf(listOf(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)) }
+    var selectedAfMode by remember { mutableIntStateOf(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE) }
     var status by remember { mutableStateOf("CÂMERA PRONTA") }
     var backCamera by remember { mutableStateOf(true) }
     var flashMode by remember { mutableIntStateOf(ImageCapture.FLASH_MODE_AUTO) }
@@ -192,6 +194,11 @@ fun CameraScreen(hasPermission: Boolean) {
                     val focus = info.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
                     availableWhiteBalanceModes = info.getCameraCharacteristic(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES)?.toList()
                         ?: listOf(CaptureRequest.CONTROL_AWB_MODE_AUTO)
+                    availableAfModes = info.getCameraCharacteristic(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)?.toList()
+                        ?: listOf(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                    selectedAfMode = if (CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE in availableAfModes)
+                        CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE else availableAfModes.firstOrNull()
+                        ?: CaptureRequest.CONTROL_AF_MODE_OFF
                     whiteBalanceMode = CaptureRequest.CONTROL_AWB_MODE_AUTO
                     isoRange = iso?.let { it.lower..it.upper }
                     shutterRangeNs = exposure?.let { it.lower..it.upper }
@@ -600,6 +607,38 @@ fun CameraScreen(hasPermission: Boolean) {
                 } else {
                     Text("FOCO MANUAL NÃO DISPONÍVEL NESTA CÂMERA", color = Muted, fontSize = 9.sp)
                 }
+                Text("MODO DE FOCO", color = Muted, fontSize = 10.sp)
+                val afChoices = listOf(
+                    CaptureRequest.CONTROL_AF_MODE_AUTO to "AF-S",
+                    CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE to "AF-C",
+                    CaptureRequest.CONTROL_AF_MODE_OFF to "MF"
+                ).filter { it.first in availableAfModes }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    afChoices.forEach { (afMode, label) ->
+                        FilterChip(
+                            selected = selectedAfMode == afMode,
+                            onClick = {
+                                try {
+                                    camera2Control?.setCaptureRequestOptions(
+                                        CaptureRequestOptions.Builder()
+                                            .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, afMode)
+                                            .build()
+                                    )
+                                    selectedAfMode = afMode
+                                    status = when (afMode) {
+                                        CaptureRequest.CONTROL_AF_MODE_AUTO -> "FOCO AUTOMÁTICO SIMPLES (AF-S)"
+                                        CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE -> "FOCO CONTÍNUO (AF-C)"
+                                        else -> "FOCO MANUAL (MF)"
+                                    }
+                                } catch (_: Exception) { status = "MODO DE FOCO NÃO SUPORTADO NESTA CÂMERA" }
+                            },
+                            label = { Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Gold, selectedLabelColor = Color.Black, labelColor = Color.White)
+                        )
+                    }
+                }
+                if (afChoices.isEmpty()) Text("MODOS DE FOCO NÃO EXPOSTOS PELO CAMERA2", color = Muted, fontSize = 9.sp)
+
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("EXPOSIÇÃO", color = Muted, fontSize = 10.sp)
                     Text("${if (exposureEv >= 0) "+" else ""}${String.format("%.1f", exposureEv)} EV",
