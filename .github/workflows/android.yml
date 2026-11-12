@@ -56,7 +56,7 @@ jobs:
   release:
     name: Build signed APK and publish update
     needs: build
-    if: needs.build.outputs.signing_ready == 'true' && github.event_name == 'push'
+    if: needs.build.outputs.signing_ready == 'true' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
