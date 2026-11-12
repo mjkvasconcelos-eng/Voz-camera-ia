@@ -80,6 +80,7 @@ fun CameraScreen(hasPermission: Boolean) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var mode by remember { mutableStateOf("AUTO") }
+    var dslrMode by remember { mutableStateOf("P") }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var exposureIndex by remember { mutableIntStateOf(0) }
@@ -392,6 +393,34 @@ fun CameraScreen(hasPermission: Boolean) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Text("SELETOR DE MODOS • ESTILO DSLR", color = Muted, fontSize = 9.sp, letterSpacing = 1.2.sp)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                listOf("P", "S", "A", "M").forEach { dial ->
+                    FilterChip(
+                        selected = dslrMode == dial,
+                        onClick = {
+                            dslrMode = dial
+                            mode = if (dial == "P") "AUTO" else "PRO"
+                            status = when (dial) {
+                                "P" -> "PROGRAMA: EXPOSIÇÃO AUTOMÁTICA"
+                                "S" -> "PERFIL S: AJUSTE O OBTURADOR NO PAINEL PRO"
+                                "A" -> "PERFIL A: ABERTURA FÍSICA FIXA NESTE SMARTPHONE"
+                                else -> "MANUAL: ISO, OBTURADOR, FOCO E EXPOSIÇÃO"
+                            }
+                        },
+                        label = { Text(dial, fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Gold,
+                            selectedLabelColor = Color.Black,
+                            labelColor = Color.White
+                        ),
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                }
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 listOf("AUTO", "PRO").forEach { item ->
                     FilterChip(
