@@ -98,6 +98,8 @@ fun CameraScreen(hasPermission: Boolean) {
     var manualFocusDistance by remember { mutableFloatStateOf(0f) }
     var manualExposureEnabled by remember { mutableStateOf(false) }
     var detectedScene by remember { mutableStateOf("ANALISANDO CENA…") }
+    var showHardwareReport by remember { mutableStateOf(false) }
+    var hardwareReport by remember { mutableStateOf<List<CameraLensInfo>>(emptyList()) }
 
     if (!hasPermission) {
         Box(Modifier.fillMaxSize().background(Dark), contentAlignment = Alignment.Center) {
@@ -243,6 +245,9 @@ fun CameraScreen(hasPermission: Boolean) {
     }
 
     val activeCamera = camera
+    if (showHardwareReport) {
+        CameraHardwareReportDialog(cameras = hardwareReport, onDismiss = { showHardwareReport = false })
+    }
     val exposureStep = activeCamera?.cameraInfo?.exposureState?.exposureCompensationStep?.toFloat() ?: 0.0f
     val exposureEv = exposureIndex * exposureStep
 
@@ -297,6 +302,10 @@ fun CameraScreen(hasPermission: Boolean) {
                         torchEnabled = !torchEnabled
                         camera?.cameraControl?.enableTorch(torchEnabled)
                     } else status = "FLASH NÃO DISPONÍVEL NESTA CÂMERA"
+                }
+                SmallControl("◎", "LENTES") {
+                    hardwareReport = try { readCameraHardware(context) } catch (_: Exception) { emptyList() }
+                    showHardwareReport = true
                 }
             }
             Surface(
