@@ -51,6 +51,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val Gold = Color(0xFFD6A84F)
@@ -106,6 +108,9 @@ fun CameraScreen(hasPermission: Boolean) {
     var hardwareReport by remember { mutableStateOf<List<CameraLensInfo>>(emptyList()) }
     var showLensPicker by remember { mutableStateOf(false) }
     var selectedCameraId by remember { mutableStateOf<String?>(null) }
+    var photoTimerSeconds by remember { mutableIntStateOf(0) }
+    var isCountingDown by remember { mutableStateOf(false) }
+    val cameraScope = rememberCoroutineScope()
 
     if (!hasPermission) {
         Box(Modifier.fillMaxSize().background(Dark), contentAlignment = Alignment.Center) {
@@ -584,6 +589,21 @@ fun CameraScreen(hasPermission: Boolean) {
                 Text("AJUSTES AUTOMÁTICOS DA CÂMERA", color = Muted, fontSize = 10.sp)
             }
 
+            Text("TEMPORIZADOR DA FOTO", color = Muted, fontSize = 9.sp)
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.Center) {
+                listOf(0, 3, 5, 10).forEach { seconds ->
+                    FilterChip(
+                        selected = photoTimerSeconds == seconds,
+                        onClick = { photoTimerSeconds = seconds },
+                        label = { Text(if (seconds == 0) "DESLIGADO" else "${seconds}s") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Gold, selectedLabelColor = Color.Black, labelColor = Color.White
+                        ),
+                        modifier = Modifier.padding(horizontal = 3.dp)
+                    )
+                }
+            }
+
             Row(
                 Modifier.fillMaxWidth().padding(top = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -602,33 +622,48 @@ fun CameraScreen(hasPermission: Boolean) {
                         val capture = imageCapture
                         if (capture == null) {
                             status = "AGUARDE A CÂMERA INICIAR"
-                        } else {
-                            val name = "VozCamera_${System.currentTimeMillis()}.jpg"
-                            val values = ContentValues().apply {
-                                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-                                put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-                                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/VozCameraIA")
-                            }
-                            val output = ImageCapture.OutputFileOptions.Builder(
-                                context.contentResolver,
-                                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                                values
-                            ).build()
-                            status = "CAPTURANDO..."
-                            capture.takePicture(
-                                output,
-                                ContextCompat.getMainExecutor(context),
-                                object : ImageCapture.OnImageSavedCallback {
-                                    override fun onImageSaved(result: ImageCapture.OutputFileResults) {
-                                        status = "FOTO SALVA • GALERIA/VOZCAMERAIA"
+                        } else if (!isCountingDown) {
+                            cameraScope.launch {
+                                isCountingDown = true
+                                try {
+                                    if (photoTimerSeconds > 0) {
+                                        status = "FOTO EM ${photoTimerSeconds}..."
+                                        delay(photoTimerSeconds * 1000L)
                                     }
-                                    override fun onError(exception: ImageCaptureException) {
-                                        status = "ERRO AO FOTOGRAFAR: ${exception.message}"
+                                    val name = "VozCamera_${System.currentTimeMillis()}.jpg"
+                                    val values = ContentValues().apply {
+                                        put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                                        put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                                        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/VozCameraIA")
                                     }
+                                    val output = ImageCapture.OutputFileOptions.Builder(
+                                        context.contentResolver,
+                                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                                        values
+                                    ).build()
+                                    status = "CAPTURANDO..."
+                                    capture.takePicture(
+                                        output,
+                                        ContextCompat.getMainExecutor(context),
+                                        object : ImageCapture.OnImageSavedCallback {
+                                            override fun onImageSaved(result: ImageCapture.OutputFileResults) {
+                                                status = "FOTO SALVA • GALERIA/VOZCAMERAIA"
+                                                isCountingDown = false
+                                            }
+                                            override fun onError(exception: ImageCaptureException) {
+                                                status = "ERRO AO FOTOGRAFAR: ${exception.message}"
+                                                isCountingDown = false
+                                            }
+                                        }
+                                    )
+                                } catch (_: Exception) {
+                                    status = "NÃO FOI POSSÍVEL INICIAR O TEMPORIZADOR"
+                                    isCountingDown = false
                                 }
-                            )
+                            }
                         }
                     },
+                    enabled = !isCountingDown,
                     colors = ButtonDefaults.buttonColors(containerColor = Gold),
                     shape = CircleShape,
                     modifier = Modifier.size(68.dp),
