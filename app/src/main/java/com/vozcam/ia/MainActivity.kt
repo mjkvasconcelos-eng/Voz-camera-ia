@@ -29,6 +29,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.label.ImageLabeling
 import com.google.mlkit.vision.label.defaults.ImageLabelerOptions
 import java.util.concurrent.Executors
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
@@ -114,6 +115,23 @@ fun CameraScreen(hasPermission: Boolean) {
     var photoTimerSeconds by remember { mutableIntStateOf(0) }
     var isCountingDown by remember { mutableStateOf(false) }
     val cameraScope = rememberCoroutineScope()
+    var updateAvailable by remember { mutableStateOf<AppUpdate?>(null) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    var downloadedUpdate by remember { mutableStateOf<File?>(null) }
+    var updateBusy by remember { mutableStateOf(false) }
+    var updateMessage by remember { mutableStateOf("Uma nova versão está disponível.") }
+
+    LaunchedEffect(Unit) {
+        updateBusy = true
+        try {
+            updateAvailable = AppUpdater.checkLatest(context)
+            showUpdateDialog = updateAvailable != null
+        } catch (_: Exception) {
+            // A falha de rede não impede a abertura da câmera.
+        } finally {
+            updateBusy = false
+        }
+    }
 
     if (!hasPermission) {
         Box(Modifier.fillMaxSize().background(Dark), contentAlignment = Alignment.Center) {
@@ -297,6 +315,45 @@ fun CameraScreen(hasPermission: Boolean) {
     val exposureStep = activeCamera?.cameraInfo?.exposureState?.exposureCompensationStep?.toFloat() ?: 0.0f
     val exposureEv = exposureIndex * exposureStep
 
+    if (showUpdateDialog && updateAvailable != null) {
+        val release = updateAvailable!!
+        AlertDialog(
+            onDismissRequest = { showUpdateDialog = false },
+            title = { Text("ATUALIZAÇÃO DISPONÍVEL") },
+            text = {
+                Column {
+                    Text("Voz Câmera IA • versão ${release.versionName}")
+                    Text(updateMessage, modifier = Modifier.padding(top = 8.dp))
+                    Text("O Android pedirá sua autorização para instalar.", modifier = Modifier.padding(top = 8.dp))
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !updateBusy,
+                    onClick = {
+                        cameraScope.launch {
+                            updateBusy = true
+                            try {
+                                val apk = downloadedUpdate ?: AppUpdater.download(context, release)
+                                downloadedUpdate = apk
+                                val opened = AppUpdater.installOrRequestPermission(context, apk)
+                                updateMessage = if (opened) "Instalador do Android aberto."
+                                    else "Permita a instalação para Voz Câmera IA e volte aqui. Depois toque em INSTALAR APK."
+                            } catch (error: Exception) {
+                                updateMessage = error.message ?: "Não foi possível atualizar."
+                            } finally {
+                                updateBusy = false
+                            }
+                        }
+                    }
+                ) { Text(if (updateBusy) "AGUARDE..." else if (downloadedUpdate == null) "BAIXAR APK" else "INSTALAR APK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUpdateDialog = false }) { Text("DEPOIS") }
+            }
+        )
+    }
+
     Column(Modifier.fillMaxSize().background(Dark)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
@@ -307,9 +364,33 @@ fun CameraScreen(hasPermission: Boolean) {
                 Text("VOZ CÂMERA IA", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Text("GALAXY S24 ULTRA • PRO CAMERA", color = Gold, fontSize = 9.sp, letterSpacing = 1.2.sp)
             }
-            Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
-                Text(if (mode == "AUTO") "● AUTO IA" else "● PRO", color = Gold,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp), fontSize = 10.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    enabled = !updateBusy,
+                    onClick = {
+                        cameraScope.launch {
+                            updateBusy = true
+                            try {
+                                updateAvailable = AppUpdater.checkLatest(context)
+                                if (updateAvailable != null) {
+                                    downloadedUpdate = null
+                                    updateMessage = "Uma nova versão está disponível."
+                                    showUpdateDialog = true
+                                } else {
+                                    status = "VOZ CÂMERA IA JÁ ESTÁ ATUALIZADO"
+                                }
+                            } catch (_: Exception) {
+                                status = "NÃO FOI POSSÍVEL VERIFICAR ATUALIZAÇÕES"
+                            } finally {
+                                updateBusy = false
+                            }
+                        }
+                    }
+                ) { Text(if (updateBusy) "VERIFICANDO" else "ATUALIZAR", color = Gold, fontSize = 9.sp) }
+                Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
+                    Text(if (mode == "AUTO") "● AUTO IA" else "● PRO", color = Gold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp), fontSize = 10.sp)
+                }
             }
         }
 
