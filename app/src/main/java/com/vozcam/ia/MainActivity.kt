@@ -33,6 +33,9 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
@@ -44,6 +47,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -111,6 +115,7 @@ fun CameraScreen(hasPermission: Boolean) {
     var showHardwareReport by remember { mutableStateOf(false) }
     var hardwareReport by remember { mutableStateOf<List<CameraLensInfo>>(emptyList()) }
     var showLensPicker by remember { mutableStateOf(false) }
+    var showLensOverlay by remember { mutableStateOf(false) }
     var selectedCameraId by remember { mutableStateOf<String?>(null) }
     var photoTimerSeconds by remember { mutableIntStateOf(0) }
     var isCountingDown by remember { mutableStateOf(false) }
@@ -315,6 +320,12 @@ fun CameraScreen(hasPermission: Boolean) {
     val exposureStep = activeCamera?.cameraInfo?.exposureState?.exposureCompensationStep?.toFloat() ?: 0.0f
     val exposureEv = exposureIndex * exposureStep
 
+    LaunchedEffect(zoom, selectedCameraId, backCamera) {
+        showLensOverlay = true
+        delay(2800)
+        showLensOverlay = false
+    }
+
     if (showUpdateDialog && updateAvailable != null) {
         val release = updateAvailable!!
         AlertDialog(
@@ -412,6 +423,49 @@ fun CameraScreen(hasPermission: Boolean) {
                             androidx.compose.ui.geometry.Offset(x, size.height), stroke)
                         drawLine(lineColor, androidx.compose.ui.geometry.Offset(0f, y),
                             androidx.compose.ui.geometry.Offset(size.width, y), stroke)
+                    }
+                }
+            }
+            AnimatedVisibility(
+                visible = showLensOverlay,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp),
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Surface(
+                    color = Color(0xDD101216),
+                    shape = RoundedCornerShape(28.dp),
+                    shadowElevation = 12.dp,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.55f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf(0.6f, 1f, 3f, 5f).forEach { factor ->
+                            val available = factor >= minZoom && factor <= maxZoom
+                            val selected = kotlin.math.abs(zoom - factor) < 0.05f
+                            Surface(
+                                onClick = {
+                                    if (available) {
+                                        zoom = factor
+                                        camera?.cameraControl?.setZoomRatio(factor)
+                                    }
+                                },
+                                enabled = available,
+                                shape = CircleShape,
+                                color = if (selected) Gold else Color.Transparent
+                            ) {
+                                Text(
+                                    if (factor == 0.6f) "0.6×" else "${factor.toInt()}×",
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    color = if (selected) Color.Black else if (available) Color.White else Muted.copy(alpha = 0.4f),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
             }
