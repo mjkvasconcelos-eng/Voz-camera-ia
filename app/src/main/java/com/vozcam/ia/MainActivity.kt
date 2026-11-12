@@ -34,6 +34,8 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -79,6 +81,8 @@ fun CameraScreen(hasPermission: Boolean) {
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var exposureIndex by remember { mutableIntStateOf(0) }
+    var whiteBalanceMode by remember { mutableIntStateOf(CaptureRequest.CONTROL_AWB_MODE_AUTO) }
+    var availableWhiteBalanceModes by remember { mutableStateOf(listOf(CaptureRequest.CONTROL_AWB_MODE_AUTO)) }
     var status by remember { mutableStateOf("CÂMERA PRONTA") }
     var backCamera by remember { mutableStateOf(true) }
     var flashMode by remember { mutableIntStateOf(ImageCapture.FLASH_MODE_AUTO) }
@@ -180,6 +184,9 @@ fun CameraScreen(hasPermission: Boolean) {
                     val iso = info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
                     val exposure = info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
                     val focus = info.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
+                    availableWhiteBalanceModes = info.getCameraCharacteristic(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES)?.toList()
+                        ?: listOf(CaptureRequest.CONTROL_AWB_MODE_AUTO)
+                    whiteBalanceMode = CaptureRequest.CONTROL_AWB_MODE_AUTO
                     isoRange = iso?.let { it.lower..it.upper }
                     shutterRangeNs = exposure?.let { it.lower..it.upper }
                     minimumFocusDistance = focus
@@ -436,6 +443,46 @@ fun CameraScreen(hasPermission: Boolean) {
                 val isoLimits = isoRange
                 val shutterLimits = shutterRangeNs
                 val camera2Control = active?.cameraControl?.let { Camera2CameraControl.from(it) }
+                val whiteBalanceOptions = listOf(
+                    CaptureRequest.CONTROL_AWB_MODE_AUTO to "AUTO",
+                    CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT to "DIA",
+                    CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT to "NUBLADO",
+                    CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT to "QUENTE",
+                    CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT to "FLUOR"
+                ).filter { it.first in availableWhiteBalanceModes }
+                Text("BALANÇO DE BRANCO", color = Muted, fontSize = 10.sp)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    whiteBalanceOptions.forEach { (awbMode, label) ->
+                        FilterChip(
+                            selected = whiteBalanceMode == awbMode,
+                            onClick = {
+                                try {
+                                    camera2Control?.setCaptureRequestOptions(
+                                        CaptureRequestOptions.Builder()
+                                            .setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, awbMode)
+                                            .build()
+                                    )
+                                    whiteBalanceMode = awbMode
+                                    status = "BALANÇO DE BRANCO: $label"
+                                } catch (_: Exception) {
+                                    status = "BALANÇO DE BRANCO NÃO SUPORTADO"
+                                }
+                            },
+                            label = { Text(label, fontSize = 9.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Gold,
+                                selectedLabelColor = Color.Black,
+                                labelColor = Color.White
+                            )
+                        )
+                    }
+                }
+                if (whiteBalanceOptions.isEmpty()) {
+                    Text("BALANÇO DE BRANCO MANUAL NÃO EXPOSTO NESTA CÂMERA", color = Muted, fontSize = 9.sp)
+                }
                 if (isoLimits != null && shutterLimits != null) {
                     Text("ISO: ${isoValue.toInt()}", color = Muted, fontSize = 10.sp)
                     Slider(
