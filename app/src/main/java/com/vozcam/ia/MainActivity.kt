@@ -435,12 +435,8 @@ fun CameraScreen(hasPermission: Boolean) {
                     }
                 }
             }
-            AnimatedVisibility(
-                visible = showLensOverlay,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp),
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
+            if (showLensOverlay) {
+                Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp)) {
                 Surface(
                     color = Color(0xDD101216),
                     shape = RoundedCornerShape(28.dp),
@@ -536,6 +532,7 @@ fun CameraScreen(hasPermission: Boolean) {
             ) {
                 Text("TOQUE NA IMAGEM PARA FOCAR", color = Color.White,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp), fontSize = 9.sp)
+                }
             }
         }
 
