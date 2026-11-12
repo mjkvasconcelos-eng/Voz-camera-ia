@@ -81,7 +81,7 @@ fun CameraScreen(hasPermission: Boolean) {
     var exposureIndex by remember { mutableIntStateOf(0) }
     var status by remember { mutableStateOf("CÂMERA PRONTA") }
     var backCamera by remember { mutableStateOf(true) }
-    var torchEnabled by remember { mutableStateOf(false) }
+    var flashMode by remember { mutableIntStateOf(ImageCapture.FLASH_MODE_AUTO) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var minZoom by remember { mutableFloatStateOf(1f) }
     var maxZoom by remember { mutableFloatStateOf(1f) }
@@ -142,6 +142,7 @@ fun CameraScreen(hasPermission: Boolean) {
                 }
                 val capture = ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                    .setFlashMode(flashMode)
                     .build()
                 val analysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -253,6 +254,10 @@ fun CameraScreen(hasPermission: Boolean) {
         }
     }
 
+    LaunchedEffect(imageCapture, flashMode) {
+        imageCapture?.flashMode = flashMode
+    }
+
     val activeCamera = camera
     if (showHardwareReport) {
         CameraHardwareReportDialog(cameras = hardwareReport, onDismiss = { showHardwareReport = false })
@@ -313,16 +318,37 @@ fun CameraScreen(hasPermission: Boolean) {
                 Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                SmallControl("⟲", "VIRAR") { backCamera = !backCamera; selectedCameraId = null; torchEnabled = false }
+                SmallControl("⟲", "VIRAR") { backCamera = !backCamera; selectedCameraId = null }
                 SmallControl(if (gridEnabled) "▦" else "▤", "GRADE") {
                     gridEnabled = !gridEnabled
                 }
-                SmallControl(if (torchEnabled) "⚡" else "ϟ", if (torchEnabled) "FLASH ON" else "FLASH") {
+                SmallControl(
+                    when (flashMode) {
+                        ImageCapture.FLASH_MODE_AUTO -> "A⚡"
+                        ImageCapture.FLASH_MODE_ON -> "⚡"
+                        else -> "ϟ"
+                    },
+                    when (flashMode) {
+                        ImageCapture.FLASH_MODE_AUTO -> "FLASH AUTO"
+                        ImageCapture.FLASH_MODE_ON -> "FLASH ON"
+                        else -> "FLASH OFF"
+                    }
+                ) {
                     val hasFlash = camera?.cameraInfo?.hasFlashUnit() == true
-                    if (hasFlash) {
-                        torchEnabled = !torchEnabled
-                        camera?.cameraControl?.enableTorch(torchEnabled)
-                    } else status = "FLASH NÃO DISPONÍVEL NESTA CÂMERA"
+                    if (!hasFlash) {
+                        status = "FLASH NÃO DISPONÍVEL NESTA CÂMERA"
+                    } else {
+                        flashMode = when (flashMode) {
+                            ImageCapture.FLASH_MODE_AUTO -> ImageCapture.FLASH_MODE_ON
+                            ImageCapture.FLASH_MODE_ON -> ImageCapture.FLASH_MODE_OFF
+                            else -> ImageCapture.FLASH_MODE_AUTO
+                        }
+                        status = when (flashMode) {
+                            ImageCapture.FLASH_MODE_AUTO -> "FLASH AUTOMÁTICO ATIVADO"
+                            ImageCapture.FLASH_MODE_ON -> "FLASH SEMPRE LIGADO PARA FOTOS"
+                            else -> "FOTOS SEM FLASH"
+                        }
+                    }
                 }
                 SmallControl("◉", "LENTES") {
                     hardwareReport = try { readCameraHardware(context) } catch (_: Exception) { emptyList() }
@@ -569,7 +595,6 @@ fun CameraScreen(hasPermission: Boolean) {
                 TextButton(onClick = {
                     backCamera = !backCamera
                     selectedCameraId = null
-                    torchEnabled = false
                 }) { Text("CÂMERA ${if (backCamera) "FRONTAL" else "TRASEIRA"}", color = Muted, fontSize = 10.sp) }
             }
             Text(status, color = Gold, fontSize = 9.sp, modifier = Modifier.padding(top = 6.dp))
