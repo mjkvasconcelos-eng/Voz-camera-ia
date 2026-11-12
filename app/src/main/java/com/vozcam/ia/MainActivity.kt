@@ -11,6 +11,7 @@ import android.provider.MediaStore
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.camera2.interop.Camera2CameraInfo
@@ -118,6 +119,7 @@ fun CameraScreen(hasPermission: Boolean) {
     var hardwareReport by remember { mutableStateOf<List<CameraLensInfo>>(emptyList()) }
     var showLensPicker by remember { mutableStateOf(false) }
     var showLensOverlay by remember { mutableStateOf(false) }
+    var showProSettings by remember { mutableStateOf(false) }
     var selectedCameraId by remember { mutableStateOf<String?>(null) }
     var photoTimerSeconds by remember { mutableIntStateOf(0) }
     var isCountingDown by remember { mutableStateOf(false) }
@@ -127,6 +129,8 @@ fun CameraScreen(hasPermission: Boolean) {
     var downloadedUpdate by remember { mutableStateOf<File?>(null) }
     var updateBusy by remember { mutableStateOf(false) }
     var updateMessage by remember { mutableStateOf("Uma nova versão está disponível.") }
+
+    BackHandler(enabled = showProSettings) { showProSettings = false }
 
     LaunchedEffect(Unit) {
         updateBusy = true
@@ -272,6 +276,7 @@ fun CameraScreen(hasPermission: Boolean) {
                     scaleDetector.onTouchEvent(event)
                     if (event.action == MotionEvent.ACTION_UP) {
                         if (!scalingGesture) {
+                            showProSettings = false
                             val point: MeteringPoint = view.meteringPointFactory
                                 .createPoint(event.x, event.y)
                             val action = FocusMeteringAction.Builder(point)
@@ -576,7 +581,10 @@ fun CameraScreen(hasPermission: Boolean) {
                 listOf("AUTO", "PRO").forEach { item ->
                     FilterChip(
                         selected = mode == item,
-                        onClick = { mode = item },
+                        onClick = {
+                            mode = item
+                            showProSettings = item == "PRO"
+                        },
                         label = { Text(if (item == "AUTO") "IA AUTOMÁTICA" else "PROFISSIONAL") },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Gold,
@@ -622,7 +630,11 @@ fun CameraScreen(hasPermission: Boolean) {
                 )
             }
 
-            if (mode == "PRO") {
+            if (mode == "PRO" && showProSettings) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("AJUSTES PROFISSIONAIS", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = { showProSettings = false }) { Text("FECHAR  ✕", color = Gold, fontSize = 10.sp) }
+                }
                 Text(camera2Summary, color = Gold, fontSize = 9.sp)
                 val active = camera
                 val isoLimits = isoRange
@@ -797,6 +809,10 @@ fun CameraScreen(hasPermission: Boolean) {
                     valueRange = evMin.toFloat()..evMax.toFloat(),
                     colors = SliderDefaults.colors(thumbColor = Gold, activeTrackColor = Gold)
                 )
+            } else if (mode == "PRO") {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    OutlinedButton(onClick = { showProSettings = true }) { Text("ABRIR AJUSTES PRO", color = Gold) }
+                }
             } else {
                 Text("AJUSTES AUTOMÁTICOS DA CÂMERA", color = Muted, fontSize = 10.sp)
             }
