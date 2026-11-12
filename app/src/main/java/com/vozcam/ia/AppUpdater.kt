@@ -74,7 +74,8 @@ object AppUpdater {
     }
 
     suspend fun download(context: Context, update: AppUpdate): File = withContext(Dispatchers.IO) {
-        val directory = File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "updates")
+        val downloadRoot = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+        val directory = File(downloadRoot, "updates")
         if (!directory.exists() && !directory.mkdirs()) {
             throw IllegalStateException("Não foi possível criar a pasta de atualização.")
         }
@@ -98,9 +99,16 @@ object AppUpdater {
                 throw IllegalStateException("O arquivo baixado está incompleto.")
             }
             update.sha256?.let { expected ->
-                val actual = MessageDigest.getInstance("SHA-256")
-                    .digest(apk.readBytes())
-                    .joinToString("") { "%02x".format(it) }
+                val digest = MessageDigest.getInstance("SHA-256")
+                apk.inputStream().use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        digest.update(buffer, 0, count)
+                    }
+                }
+                val actual = digest.digest().joinToString("") { "%02x".format(it) }
                 if (!actual.equals(expected, ignoreCase = true)) {
                     apk.delete()
                     throw SecurityException("A verificação de integridade do APK falhou.")
