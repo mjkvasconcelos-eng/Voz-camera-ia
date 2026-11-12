@@ -152,3 +152,62 @@ fun CameraHardwareReportDialog(
 private fun ReportLine(label: String, value: String) {
     Text("$label: $value", color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
 }
+
+
+@Composable
+fun CameraLensSelectionDialog(
+    cameras: List<CameraLensInfo>,
+    selectedId: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF17191D),
+        title = {
+            Column {
+                Text("SELECIONAR CÂMERA", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("SOMENTE DISPOSITIVOS EXPOSTOS AO CAMERA2", color = ReportGold, fontSize = 9.sp)
+            }
+        },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                TextButton(onClick = { onSelect(null) }, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth()) {
+                        Text(if (selectedId == null) "✓ CÂMERA AUTOMÁTICA" else "CÂMERA AUTOMÁTICA", color = ReportGold, fontWeight = FontWeight.Bold)
+                        Text("Deixar o Android/CameraX escolher a câmera traseira ou frontal padrão", color = Color.White, fontSize = 10.sp)
+                    }
+                }
+                cameras.forEach { lens ->
+                    HorizontalDivider(color = ReportMuted.copy(alpha = 0.25f))
+                    TextButton(onClick = { onSelect(lens.id) }, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(
+                                (if (selectedId == lens.id) "✓ " else "") + "CÂMERA ${lens.id} • ${lens.facing}",
+                                color = ReportGold, fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "${lens.focalLengths} • ${lens.sensorSize} • zoom até ${lens.maxZoom}",
+                                color = Color.White, fontSize = 10.sp
+                            )
+                            Text("Camera2: ${lens.hardwareLevel}", color = ReportMuted, fontSize = 9.sp)
+                        }
+                    }
+                }
+                if (cameras.isEmpty()) {
+                    Text("Nenhuma câmera desta orientação foi exposta pelo Android.", color = Color.White, fontSize = 11.sp)
+                }
+                Text(
+                    "Lentes físicas internas de uma câmera lógica podem não aparecer como opções independentes. A lista contém apenas IDs selecionáveis publicados pelo sistema.",
+                    color = ReportMuted, fontSize = 10.sp, modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("FECHAR", color = ReportGold) }
+        }
+    )
+}
