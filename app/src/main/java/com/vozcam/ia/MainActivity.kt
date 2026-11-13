@@ -694,10 +694,10 @@ fun CameraScreen(hasPermission: Boolean) {
 
         Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .heightIn(max = 330.dp)
+                .heightIn(max = 280.dp)
                 .verticalScroll(rememberScrollState())
-                .shadow(18.dp, RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
-                .background(Color(0xD9101216), RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                .shadow(22.dp, RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                .background(Color(0xB8101216), RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
                 .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
