@@ -42,6 +42,7 @@ fun AiAssistantPanel(
 ) {
     var endpoint by remember { mutableStateOf(DEFAULT_VOZ_API) }
     var token by remember { mutableStateOf("") }
+    var provider by remember { mutableStateOf("gemini") }
     var message by remember { mutableStateOf("") }
     var answer by remember { mutableStateOf("Olá! Sou seu assistente fotográfico. Configure o token de acesso para começar.") }
     var busy by remember { mutableStateOf(false) }
@@ -66,6 +67,11 @@ fun AiAssistantPanel(
                 }
                 TextButton(onClick = onClose) { Text("✕", color = Color.White) }
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(selected = provider == "gemini", onClick = { provider = "gemini" }, label = { Text("GEMINI") })
+                FilterChip(selected = provider == "openai", onClick = { provider = "openai" }, label = { Text("GPT") })
+                FilterChip(selected = provider == "auto", onClick = { provider = "auto" }, label = { Text("AUTO") })
+            }
             if (showSettings) {
                 OutlinedTextField(
                     value = endpoint, onValueChange = { endpoint = it.trim() },
@@ -86,7 +92,7 @@ fun AiAssistantPanel(
                         else {
                             busy = true
                             scope.launch {
-                                answer = try { callVozApi(endpoint, token, "Responda apenas em português do Brasil: confirme que a conexão do Voz Câmera IA está funcionando.", cameraContext, null) }
+                                answer = try { callVozApi(endpoint, token, provider, "Responda apenas em português do Brasil: confirme que a conexão do Voz Câmera IA está funcionando.", cameraContext, null) }
                                     catch (e: Exception) { "Falha na conexão: ${e.message ?: "verifique a internet, o endereço e o token"}" }
                                 busy = false
                                 if (!answer.startsWith("Falha")) showSettings = false
@@ -115,7 +121,7 @@ fun AiAssistantPanel(
                             busy = true
                             message = ""
                             scope.launch {
-                                answer = try { callVozApi(endpoint, token, prompt, cameraContext, null) }
+                                answer = try { callVozApi(endpoint, token, provider, prompt, cameraContext, null) }
                                     catch (e: Exception) { "Falha na comunicação: ${e.message ?: "tente novamente"}" }
                                 busy = false
                             }
@@ -139,7 +145,7 @@ fun AiAssistantPanel(
                                     scope.launch {
                                         answer = try {
                                             val dataUrl = withContext(Dispatchers.IO) { imageFileToDataUrl(photo) }
-                                            callVozApi(endpoint, token, "Analise esta fotografia e recomende configurações adequadas de ISO, velocidade do obturador, foco, exposição e lente. Explique brevemente o motivo.", cameraContext, dataUrl)
+                                            callVozApi(endpoint, token, provider, "Analise esta fotografia e recomende configurações adequadas de ISO, velocidade do obturador, foco, exposição e lente. Explique brevemente o motivo.", cameraContext, dataUrl)
                                         } catch (e: Exception) { "Não foi possível analisar a foto: ${e.message ?: "erro desconhecido"}" }
                                         busy = false
                                     }
@@ -160,6 +166,7 @@ fun AiAssistantPanel(
 private suspend fun callVozApi(
     endpoint: String,
     token: String,
+    provider: String,
     message: String,
     cameraContext: String,
     imageDataUrl: String?
@@ -174,7 +181,7 @@ private suspend fun callVozApi(
         connection.doOutput = true
         connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
         connection.setRequestProperty("Authorization", "Bearer $token")
-        val body = JSONObject().put("message", message).put("context", cameraContext)
+        val body = JSONObject().put("message", message).put("context", cameraContext).put("provider", provider)
         if (imageDataUrl != null) body.put("imageDataUrl", imageDataUrl)
         connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
         val code = connection.responseCode
