@@ -481,46 +481,24 @@ fun CameraScreen(hasPermission: Boolean) {
                 factory = { view },
                 modifier = Modifier.fillMaxSize()
             )
-            // Assistente flutuante: camada visual inicial; conexão real com a API será feita em etapa própria.
+            // Assistente fotográfico conectado ao Worker Voz Câmera IA.
             if (showAiAssistant) {
-                Surface(
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 68.dp).widthIn(max = 286.dp),
-                    color = Color(0xF0181A1F),
-                    shape = RoundedCornerShape(20.dp),
-                    shadowElevation = 18.dp,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.72f))
-                ) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(color = Gold, shape = CircleShape) {
-                                Text("GPT", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Black,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
-                            }
-                            Column(Modifier.weight(1f).padding(start = 9.dp)) {
-                                Text("ASSISTENTE FOTOGRÁFICO", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Text("JANELA FLUTUANTE", color = Gold, fontSize = 8.sp, letterSpacing = 0.8.sp)
-                            }
-                            TextButton(onClick = { showAiAssistant = false }, contentPadding = PaddingValues(4.dp)) {
-                                Text("✕", color = Color.White, fontSize = 15.sp)
-                            }
-                        }
-                        Text(
-                            "O ChatGPT ficará disponível aqui para analisar a cena e sugerir ISO, obturador, foco e lente sem sair do visor.",
-                            color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp, lineHeight = 16.sp
-                        )
-                        Surface(color = Color(0xFF242830), shape = RoundedCornerShape(10.dp)) {
-                            Text(
-                                "PRÓXIMA ETAPA: CONECTAR A API DO CHATGPT",
-                                color = Gold, fontSize = 9.sp, fontWeight = FontWeight.Bold,
-                                modifier = Modifier.fillMaxWidth().padding(10.dp)
-                            )
-                        }
-                        Text(
-                            "Nesta versão, a janela é apenas a interface visual. Ainda não envia mensagens nem altera os controles da câmera.",
-                            color = Muted, fontSize = 9.sp, lineHeight = 13.sp
-                        )
-                    }
-                }
+                AiAssistantPanel(
+                    context = context,
+                    imageCapture = imageCapture,
+                    cameraContext = buildString {
+                        append("Dispositivo: Samsung Galaxy S24 Ultra. ")
+                        append("Modo de câmera: $mode; seletor: $dslrMode; lente/câmera selecionada: ${selectedCameraId ?: "automática"}; ")
+                        append("câmera: ${if (backCamera) "traseira" else "frontal"}; zoom: ${String.format("%.2f", zoom)}x; ")
+                        append("cena detectada: $detectedScene; luminosidade média: $averageLuminance; ")
+                        append("faixa ISO disponível: ${isoRange ?: "não informada"}; ISO selecionado no controle: ${isoValue.toInt()}; ")
+                        append("obturador selecionado: ${String.format("%.2f", shutterMs)} ms; ")
+                        append("foco manual: ${String.format("%.2f", manualFocusDistance)}; exposição: ${String.format("%.1f", exposureEv)} EV; ")
+                        append("recursos Camera2: $camera2Summary. ")
+                        append("Os valores selecionados não necessariamente representam os valores efetivamente aplicados; recomende ajustes sem alterar a câmera automaticamente.")
+                    },
+                    onClose = { showAiAssistant = false }
+                )
             }
             Surface(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp),
