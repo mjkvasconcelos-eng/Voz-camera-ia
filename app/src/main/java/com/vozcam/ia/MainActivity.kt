@@ -115,6 +115,7 @@ fun CameraScreen(hasPermission: Boolean) {
     var manualFocusDistance by remember { mutableFloatStateOf(0f) }
     var manualExposureEnabled by remember { mutableStateOf(false) }
     var detectedScene by remember { mutableStateOf("ANALISANDO CENA…") }
+    var averageLuminance by remember { mutableIntStateOf(0) }
     var showHardwareReport by remember { mutableStateOf(false) }
     var hardwareReport by remember { mutableStateOf<List<CameraLensInfo>>(emptyList()) }
     var showLensPicker by remember { mutableStateOf(false) }
@@ -196,12 +197,31 @@ fun CameraScreen(hasPermission: Boolean) {
                     if (mediaImage == null || !analysisBusy.compareAndSet(false, true)) {
                         proxy.close()
                     } else {
+                        val yPlane = proxy.planes.firstOrNull()
+                        val measuredLuminance = if (yPlane != null) {
+                            val buffer = yPlane.buffer
+                            val rowStride = yPlane.rowStride
+                            val pixelStride = yPlane.pixelStride
+                            var total = 0L
+                            var samples = 0
+                            for (y in 0 until proxy.height step 16) {
+                                for (x in 0 until proxy.width step 16) {
+                                    val index = y * rowStride + x * pixelStride
+                                    if (index < buffer.limit()) {
+                                        total += (buffer.get(index).toInt() and 0xFF)
+                                        samples++
+                                    }
+                                }
+                            }
+                            if (samples > 0) (total / samples).toInt() else null
+                        } else null
                         val input = InputImage.fromMediaImage(mediaImage, proxy.imageInfo.rotationDegrees)
                         labeler.process(input)
                             .addOnSuccessListener(ContextCompat.getMainExecutor(context)) { labels ->
                                 val names = labels.sortedByDescending { it.confidence }
                                     .take(5).map { it.text.lowercase() }
                                 detectedScene = classifyScene(names)
+                                if (measuredLuminance != null) averageLuminance = measuredLuminance
                             }
                             .addOnFailureListener(ContextCompat.getMainExecutor(context)) {
                                 detectedScene = "IA INDISPONÍVEL"
@@ -530,8 +550,17 @@ fun CameraScreen(hasPermission: Boolean) {
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 62.dp),
                 color = Color(0xDD090A0C), shape = RoundedCornerShape(8.dp)
             ) {
-                Text("IA • $detectedScene", color = Gold,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = 10.sp)
+                Text(
+                    "IA • $detectedScene  |  LUZ ${averageLuminance}/255 • " +
+                        when {
+                            averageLuminance < 65 -> "BAIXA"
+                            averageLuminance > 190 -> "ALTA"
+                            else -> "MÉDIA"
+                        },
+                    color = Gold,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    fontSize = 9.sp
+                )
             }
             Surface(
                 modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
