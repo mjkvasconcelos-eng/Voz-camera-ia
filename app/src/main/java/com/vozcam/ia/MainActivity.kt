@@ -126,6 +126,8 @@ fun CameraScreen(hasPermission: Boolean) {
     var luminanceHistogram by remember { mutableStateOf(List(32) { 0f }) }
     var focusPeakingEnabled by remember { mutableStateOf(false) }
     var focusPeakingPoints by remember { mutableStateOf<List<Offset>>(emptyList()) }
+    var zebraEnabled by remember { mutableStateOf(false) }
+    var highlightPoints by remember { mutableStateOf<List<Offset>>(emptyList()) }
     var showHardwareReport by remember { mutableStateOf(false) }
     var hardwareReport by remember { mutableStateOf<List<CameraLensInfo>>(emptyList()) }
     var showLensPicker by remember { mutableStateOf(false) }
@@ -211,11 +213,13 @@ fun CameraScreen(hasPermission: Boolean) {
                         val yPlane = proxy.planes.firstOrNull()
                         var measuredHistogram: List<Float>? = null
                         var measuredFocusPoints: List<Offset>? = null
+                        var measuredHighlightPoints: List<Offset>? = null
                         val measuredLuminance = if (yPlane != null) {
                             val buffer = yPlane.buffer
                             val rowStride = yPlane.rowStride
                             val pixelStride = yPlane.pixelStride
                             val edgePoints = ArrayList<Offset>(400)
+                            val brightPoints = ArrayList<Offset>(1200)
                             var total = 0L
                             var samples = 0
                             val bins = IntArray(32)
@@ -226,6 +230,9 @@ fun CameraScreen(hasPermission: Boolean) {
                                         val value = buffer.get(index).toInt() and 0xFF
                                         total += value
                                         bins[(value / 8).coerceIn(0, 31)]++
+                                        if (value >= 235 && brightPoints.size < 1200) {
+                                            brightPoints.add(Offset(x.toFloat() / proxy.width, y.toFloat() / proxy.height))
+                                        }
                                         samples++
                                     }
                                 }
@@ -249,6 +256,7 @@ fun CameraScreen(hasPermission: Boolean) {
                                     }
                                 }
                                 measuredFocusPoints = edgePoints
+                                measuredHighlightPoints = brightPoints
                                 (total / samples).toInt()
                             } else null
                         } else null
@@ -261,6 +269,7 @@ fun CameraScreen(hasPermission: Boolean) {
                                 if (measuredLuminance != null) averageLuminance = measuredLuminance
                                 measuredHistogram?.let { luminanceHistogram = it }
                                 measuredFocusPoints?.let { focusPeakingPoints = it }
+                                measuredHighlightPoints?.let { highlightPoints = it }
                             }
                             .addOnFailureListener(ContextCompat.getMainExecutor(context)) {
                                 detectedScene = "IA INDISPONÍVEL"
@@ -477,6 +486,19 @@ fun CameraScreen(hasPermission: Boolean) {
                     Text("GPT", color = if (showAiAssistant) Color.White else Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Black)
                 }
             }
+            if (zebraEnabled && mode == "PRO") {
+                Canvas(Modifier.fillMaxSize()) {
+                    val stripeColor = Color(0xFFFF4D4D).copy(alpha = 0.82f)
+                    val stripeLength = 7.dp.toPx()
+                    val stripeStroke = 2.dp.toPx()
+                    highlightPoints.forEach { point ->
+                        val x = point.x * size.width
+                        val y = point.y * size.height
+                        drawLine(stripeColor, Offset(x - stripeLength / 2f, y + stripeLength / 2f),
+                            Offset(x + stripeLength / 2f, y - stripeLength / 2f), stripeStroke)
+                    }
+                }
+            }
             if (focusPeakingEnabled && mode == "PRO") {
                 Canvas(Modifier.fillMaxSize()) {
                     focusPeakingPoints.forEach { point ->
@@ -580,6 +602,10 @@ fun CameraScreen(hasPermission: Boolean) {
                 SmallControl("◉", "LENTES") {
                     hardwareReport = try { readCameraHardware(context) } catch (_: Exception) { emptyList() }
                     showLensPicker = true
+                }
+                SmallControl(if (zebraEnabled) "▧" else "▤", "ZEBRA") {
+                    zebraEnabled = !zebraEnabled
+                    status = if (zebraEnabled) "ZEBRA: REALCE ACIMA DE 235/255" else "ZEBRA DESATIVADO"
                 }
                 SmallControl("ⓘ", "INFO") {
                     hardwareReport = try { readCameraHardware(context) } catch (_: Exception) { emptyList() }
