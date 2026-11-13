@@ -120,6 +120,7 @@ fun CameraScreen(hasPermission: Boolean) {
     var showLensPicker by remember { mutableStateOf(false) }
     var showLensOverlay by remember { mutableStateOf(false) }
     var showProSettings by remember { mutableStateOf(false) }
+    var focusExposureLocked by remember { mutableStateOf(false) }
     var selectedCameraId by remember { mutableStateOf<String?>(null) }
     var photoTimerSeconds by remember { mutableIntStateOf(0) }
     var isCountingDown by remember { mutableStateOf(false) }
@@ -160,6 +161,7 @@ fun CameraScreen(hasPermission: Boolean) {
 
     DisposableEffect(view, backCamera, selectedCameraId) {
         previewView = view
+        focusExposureLocked = false
         val future = ProcessCameraProvider.getInstance(context)
         var provider: ProcessCameraProvider? = null
         val analysisExecutor = Executors.newSingleThreadExecutor()
@@ -560,6 +562,7 @@ fun CameraScreen(hasPermission: Boolean) {
                         onClick = {
                             dslrMode = dial
                             mode = if (dial == "P") "AUTO" else "PRO"
+                            showProSettings = dial != "P"
                             status = when (dial) {
                                 "P" -> "PROGRAMA: EXPOSIÇÃO AUTOMÁTICA"
                                 "S" -> "PERFIL S: AJUSTE O OBTURADOR NO PAINEL PRO"
@@ -636,6 +639,49 @@ fun CameraScreen(hasPermission: Boolean) {
                     TextButton(onClick = { showProSettings = false }) { Text("FECHAR  ✕", color = Gold, fontSize = 10.sp) }
                 }
                 Text(camera2Summary, color = Gold, fontSize = 9.sp)
+                OutlinedButton(
+                    onClick = {
+                        val active = camera
+                        if (focusExposureLocked) {
+                            active?.cameraControl?.cancelFocusAndMetering()
+                            focusExposureLocked = false
+                            status = "TRAVA AE/AF DESATIVADA"
+                        } else {
+                            val viewForMetering = previewView
+                            if (active == null || viewForMetering == null || viewForMetering.width <= 0 || viewForMetering.height <= 0) {
+                                status = "AGUARDE A CÂMERA FICAR PRONTA"
+                            } else {
+                                try {
+                                    val center = viewForMetering.meteringPointFactory.createPoint(
+                                        viewForMetering.width / 2f,
+                                        viewForMetering.height / 2f
+                                    )
+                                    val action = FocusMeteringAction.Builder(center)
+                                        .disableAutoCancel()
+                                        .build()
+                                    val future = active.cameraControl.startFocusAndMetering(action)
+                                    future.addListener({
+                                        try {
+                                            future.get()
+                                            focusExposureLocked = true
+                                            status = "TRAVA AE/AF ATIVADA"
+                                        } catch (_: Exception) {
+                                            status = "ESTA LENTE NÃO PERMITIU A TRAVA AE/AF"
+                                        }
+                                    }, ContextCompat.getMainExecutor(context))
+                                } catch (_: Exception) {
+                                    status = "NÃO FOI POSSÍVEL TRAVAR FOCO/EXPOSIÇÃO"
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = if (focusExposureLocked) Gold else Color.White
+                    )
+                ) {
+                    Text(if (focusExposureLocked) "🔒 AE/AF BLOQUEADOS • TOQUE PARA LIBERAR" else "🔓 TRAVAR FOCO + EXPOSIÇÃO (AE/AF)")
+                }
                 val active = camera
                 val isoLimits = isoRange
                 val shutterLimits = shutterRangeNs
