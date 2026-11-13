@@ -199,6 +199,7 @@ fun CameraScreen(hasPermission: Boolean) {
                         proxy.close()
                     } else {
                         val yPlane = proxy.planes.firstOrNull()
+                        var measuredHistogram: List<Float>? = null
                         val measuredLuminance = if (yPlane != null) {
                             val buffer = yPlane.buffer
                             val rowStride = yPlane.rowStride
@@ -219,7 +220,7 @@ fun CameraScreen(hasPermission: Boolean) {
                             }
                             if (samples > 0) {
                                 val peak = (bins.maxOrNull() ?: 1).coerceAtLeast(1).toFloat()
-                                luminanceHistogram = bins.map { it / peak }
+                                measuredHistogram = bins.map { it / peak }
                                 (total / samples).toInt()
                             } else null
                         } else null
@@ -230,6 +231,7 @@ fun CameraScreen(hasPermission: Boolean) {
                                     .take(5).map { it.text.lowercase() }
                                 detectedScene = classifyScene(names)
                                 if (measuredLuminance != null) averageLuminance = measuredLuminance
+                                measuredHistogram?.let { luminanceHistogram = it }
                             }
                             .addOnFailureListener(ContextCompat.getMainExecutor(context)) {
                                 detectedScene = "IA INDISPONÍVEL"
