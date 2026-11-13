@@ -116,6 +116,7 @@ fun CameraScreen(hasPermission: Boolean) {
     var manualExposureEnabled by remember { mutableStateOf(false) }
     var detectedScene by remember { mutableStateOf("ANALISANDO CENA…") }
     var averageLuminance by remember { mutableIntStateOf(0) }
+    var luminanceHistogram by remember { mutableStateOf(List(32) { 0f }) }
     var showHardwareReport by remember { mutableStateOf(false) }
     var hardwareReport by remember { mutableStateOf<List<CameraLensInfo>>(emptyList()) }
     var showLensPicker by remember { mutableStateOf(false) }
@@ -204,16 +205,23 @@ fun CameraScreen(hasPermission: Boolean) {
                             val pixelStride = yPlane.pixelStride
                             var total = 0L
                             var samples = 0
-                            for (y in 0 until proxy.height step 16) {
-                                for (x in 0 until proxy.width step 16) {
+                            val bins = IntArray(32)
+                            for (y in 0 until proxy.height step 8) {
+                                for (x in 0 until proxy.width step 8) {
                                     val index = y * rowStride + x * pixelStride
                                     if (index < buffer.limit()) {
-                                        total += (buffer.get(index).toInt() and 0xFF)
+                                        val value = buffer.get(index).toInt() and 0xFF
+                                        total += value
+                                        bins[(value / 8).coerceIn(0, 31)]++
                                         samples++
                                     }
                                 }
                             }
-                            if (samples > 0) (total / samples).toInt() else null
+                            if (samples > 0) {
+                                val peak = (bins.maxOrNull() ?: 1).coerceAtLeast(1).toFloat()
+                                luminanceHistogram = bins.map { it / peak }
+                                (total / samples).toInt()
+                            } else null
                         } else null
                         val input = InputImage.fromMediaImage(mediaImage, proxy.imageInfo.rotationDegrees)
                         labeler.process(input)
@@ -560,6 +568,42 @@ fun CameraScreen(hasPermission: Boolean) {
                     color = Gold,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     fontSize = 9.sp
+                )
+            }
+            Surface(
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 62.dp, end = 10.dp),
+                color = Color(0xD9090A0C), shape = RoundedCornerShape(8.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.45f))
+            ) {
+                Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                    Text("HISTOGRAMA", color = Gold, fontSize = 7.sp, fontWeight = FontWeight.Bold)
+                    Canvas(Modifier.width(112.dp).height(42.dp)) {
+                        val barWidth = size.width / luminanceHistogram.size
+                        luminanceHistogram.forEachIndexed { index, level ->
+                            val barHeight = (level * size.height).coerceAtLeast(1.dp.toPx())
+                            drawRect(
+                                color = Gold.copy(alpha = 0.9f),
+                                topLeft = androidx.compose.ui.geometry.Offset(index * barWidth, size.height - barHeight),
+                                size = androidx.compose.ui.geometry.Size((barWidth - 1.dp.toPx()).coerceAtLeast(1f), barHeight)
+                            )
+                        }
+                    }
+                }
+            }
+            Surface(
+                modifier = Modifier.align(Alignment.CenterStart).padding(start = 10.dp),
+                color = Color(0xD9090A0C), shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    when {
+                        averageLuminance < 55 -> "EXPOSIÇÃO: AUMENTAR LUZ"
+                        averageLuminance < 85 -> "CENA ESCURA"
+                        averageLuminance > 205 -> "ATENÇÃO: ALTAS LUZES"
+                        averageLuminance > 175 -> "CENA CLARA"
+                        else -> "EXPOSIÇÃO: EQUILIBRADA"
+                    },
+                    color = Gold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    fontSize = 8.sp
                 )
             }
             Surface(
