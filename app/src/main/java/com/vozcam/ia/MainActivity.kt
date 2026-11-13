@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.border
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +78,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        val barsController = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+        barsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        barsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
         if (granted) setContent { CameraScreen(hasPermission = true) }
@@ -427,55 +432,9 @@ fun CameraScreen(hasPermission: Boolean) {
         )
     }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF050608))) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Surface(color = Color(0xFF202329), shape = RoundedCornerShape(13.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.45f))) {
-                    Text("V", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("VOZ CÂMERA IA", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.6.sp)
-                    Text("S24 ULTRA  •  PROFESSIONAL", color = Gold, fontSize = 8.sp, letterSpacing = 1.35.sp)
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(
-                    enabled = !updateBusy,
-                    onClick = {
-                        cameraScope.launch {
-                            updateBusy = true
-                            try {
-                                updateAvailable = AppUpdater.checkLatest(context)
-                                if (updateAvailable != null) {
-                                    downloadedUpdate = null
-                                    updateMessage = "Uma nova versão está disponível."
-                                    showUpdateDialog = true
-                                } else {
-                                    status = "VOZ CÂMERA IA JÁ ESTÁ ATUALIZADO"
-                                }
-                            } catch (_: Exception) {
-                                status = "NÃO FOI POSSÍVEL VERIFICAR ATUALIZAÇÕES"
-                            } finally {
-                                updateBusy = false
-                            }
-                        }
-                    }
-                ) { Text(if (updateBusy) "VERIFICANDO" else "ATUALIZAR", color = Gold, fontSize = 9.sp) }
-                Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
-                    Text(if (mode == "AUTO") "● AUTO IA" else "● PRO", color = Gold,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp), fontSize = 10.sp)
-                }
-            }
-        }
-
+    Box(Modifier.fillMaxSize().background(Color(0xFF050608))) {
         Box(
-            Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp, vertical = 3.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
+            Modifier.fillMaxSize()
         ) {
             AndroidView(
                 factory = { view },
@@ -688,12 +647,64 @@ fun CameraScreen(hasPermission: Boolean) {
             }
         }
 
+        Row(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Cabeçalho flutuante sobre a visualização
+            Row(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(color = Color(0xFF202329), shape = RoundedCornerShape(13.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.45f))) {
+                    Text("V", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("VOZ CÂMERA IA", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.6.sp)
+                    Text("S24 ULTRA  •  PROFESSIONAL", color = Gold, fontSize = 8.sp, letterSpacing = 1.35.sp)
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    enabled = !updateBusy,
+                    onClick = {
+                        cameraScope.launch {
+                            updateBusy = true
+                            try {
+                                updateAvailable = AppUpdater.checkLatest(context)
+                                if (updateAvailable != null) {
+                                    downloadedUpdate = null
+                                    updateMessage = "Uma nova versão está disponível."
+                                    showUpdateDialog = true
+                                } else {
+                                    status = "VOZ CÂMERA IA JÁ ESTÁ ATUALIZADO"
+                                }
+                            } catch (_: Exception) {
+                                status = "NÃO FOI POSSÍVEL VERIFICAR ATUALIZAÇÕES"
+                            } finally {
+                                updateBusy = false
+                            }
+                        }
+                    }
+                ) { Text(if (updateBusy) "VERIFICANDO" else "ATUALIZAR", color = Gold, fontSize = 9.sp) }
+                Surface(color = Panel, shape = RoundedCornerShape(20.dp)) {
+                    Text(if (mode == "AUTO") "● AUTO IA" else "● PRO", color = Gold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp), fontSize = 10.sp)
+                }
+            }
+        }
+
         Column(
-            Modifier.fillMaxWidth()
-                .shadow(20.dp, RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
-                .background(Color(0xFF14161A), RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
-                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp))
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .heightIn(max = 330.dp)
+                .verticalScroll(rememberScrollState())
+                .shadow(18.dp, RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                .background(Color(0xD9101216), RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text("SELETOR DE MODOS • ESTILO DSLR", color = Muted, fontSize = 9.sp, letterSpacing = 1.2.sp)
