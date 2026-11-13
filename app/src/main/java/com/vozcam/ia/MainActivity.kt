@@ -48,6 +48,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
@@ -117,6 +118,8 @@ fun CameraScreen(hasPermission: Boolean) {
     var detectedScene by remember { mutableStateOf("ANALISANDO CENA…") }
     var averageLuminance by remember { mutableIntStateOf(0) }
     var luminanceHistogram by remember { mutableStateOf(List(32) { 0f }) }
+    var focusPeakingEnabled by remember { mutableStateOf(false) }
+    var focusPeakingPoints by remember { mutableStateOf<List<Offset>>(emptyList()) }
     var showHardwareReport by remember { mutableStateOf(false) }
     var hardwareReport by remember { mutableStateOf<List<CameraLensInfo>>(emptyList()) }
     var showLensPicker by remember { mutableStateOf(false) }
@@ -200,10 +203,12 @@ fun CameraScreen(hasPermission: Boolean) {
                     } else {
                         val yPlane = proxy.planes.firstOrNull()
                         var measuredHistogram: List<Float>? = null
+                        var measuredFocusPoints: List<Offset>? = null
                         val measuredLuminance = if (yPlane != null) {
                             val buffer = yPlane.buffer
                             val rowStride = yPlane.rowStride
                             val pixelStride = yPlane.pixelStride
+                            val edgePoints = ArrayList<Offset>(400)
                             var total = 0L
                             var samples = 0
                             val bins = IntArray(32)
@@ -221,6 +226,22 @@ fun CameraScreen(hasPermission: Boolean) {
                             if (samples > 0) {
                                 val peak = (bins.maxOrNull() ?: 1).coerceAtLeast(1).toFloat()
                                 measuredHistogram = bins.map { it / peak }
+                                for (y in 8 until proxy.height - 8 step 12) {
+                                    for (x in 8 until proxy.width - 8 step 12) {
+                                        val left = y * rowStride + (x - 4) * pixelStride
+                                        val right = y * rowStride + (x + 4) * pixelStride
+                                        val top = (y - 4) * rowStride + x * pixelStride
+                                        val bottom = (y + 4) * rowStride + x * pixelStride
+                                        if (bottom < buffer.limit() && right < buffer.limit()) {
+                                            val gx = kotlin.math.abs((buffer.get(right).toInt() and 0xFF) - (buffer.get(left).toInt() and 0xFF))
+                                            val gy = kotlin.math.abs((buffer.get(bottom).toInt() and 0xFF) - (buffer.get(top).toInt() and 0xFF))
+                                            if (gx + gy > 72 && edgePoints.size < 500) {
+                                                edgePoints.add(Offset(x.toFloat() / proxy.width, y.toFloat() / proxy.height))
+                                            }
+                                        }
+                                    }
+                                }
+                                measuredFocusPoints = edgePoints
                                 (total / samples).toInt()
                             } else null
                         } else null
@@ -232,6 +253,7 @@ fun CameraScreen(hasPermission: Boolean) {
                                 detectedScene = classifyScene(names)
                                 if (measuredLuminance != null) averageLuminance = measuredLuminance
                                 measuredHistogram?.let { luminanceHistogram = it }
+                                measuredFocusPoints?.let { focusPeakingPoints = it }
                             }
                             .addOnFailureListener(ContextCompat.getMainExecutor(context)) {
                                 detectedScene = "IA INDISPONÍVEL"
@@ -458,6 +480,17 @@ fun CameraScreen(hasPermission: Boolean) {
                 factory = { view },
                 modifier = Modifier.fillMaxSize()
             )
+            if (focusPeakingEnabled && mode == "PRO") {
+                Canvas(Modifier.fillMaxSize()) {
+                    focusPeakingPoints.forEach { point ->
+                        drawCircle(
+                            color = Color(0xFF45FF78),
+                            radius = 2.2.dp.toPx(),
+                            center = Offset(point.x * size.width, point.y * size.height)
+                        )
+                    }
+                }
+            }
             if (gridEnabled) {
                 Canvas(Modifier.fillMaxSize()) {
                     val lineColor = Color.White.copy(alpha = 0.48f)
@@ -756,6 +789,18 @@ fun CameraScreen(hasPermission: Boolean) {
                     )
                 ) {
                     Text(if (focusExposureLocked) "🔒 AE/AF BLOQUEADOS • TOQUE PARA LIBERAR" else "🔓 TRAVAR FOCO + EXPOSIÇÃO (AE/AF)")
+                }
+                OutlinedButton(
+                    onClick = {
+                        focusPeakingEnabled = !focusPeakingEnabled
+                        status = if (focusPeakingEnabled) "FOCUS PEAKING ATIVADO • CONTORNO VERDE" else "FOCUS PEAKING DESATIVADO"
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = if (focusPeakingEnabled) Color(0xFF45FF78) else Color.White
+                    )
+                ) {
+                    Text(if (focusPeakingEnabled) "FOCUS PEAKING • LIGADO" else "ATIVAR FOCUS PEAKING")
                 }
                 val active = camera
                 val isoLimits = isoRange
