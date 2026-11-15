@@ -7,6 +7,8 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,7 +58,10 @@ fun AiAssistantPanel(
         shadowElevation = 18.dp,
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD6A84F))
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(color = Color(0xFFD6A84F), shape = RoundedCornerShape(10.dp)) {
                     Text("GPT", color = Color.Black, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp))
