@@ -470,7 +470,7 @@ fun CameraScreen(hasPermission: Boolean) {
                 )
             }
             Surface(
-                modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 300.dp),
                 onClick = { showAiAssistant = !showAiAssistant },
                 color = if (showAiAssistant) Color(0xFF29231A) else Color(0xF0D6A84F),
                 shape = CircleShape,
