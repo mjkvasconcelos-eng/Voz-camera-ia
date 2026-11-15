@@ -11,11 +11,26 @@ android {
         applicationId = "com.vozcam.ia"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = providers.gradleProperty("versionCode").orElse("1").get().toInt()
+        versionName = providers.gradleProperty("versionName").orElse("0.1.0").get()
     }
 
-    // Keep Java and Kotlin bytecode targets aligned.
+    signingConfigs {
+        create("release") {
+            storeFile = file(System.getenv("ANDROID_KEYSTORE_PATH") ?: "release-key.jks")
+            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: ""
+            keyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: "vozcamera-release"
+            keyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: ""
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -40,5 +55,6 @@ dependencies {
     implementation("androidx.camera:camera-camera2:$camerax")
     implementation("androidx.camera:camera-lifecycle:$camerax")
     implementation("androidx.camera:camera-view:$camerax")
+    implementation("com.google.mlkit:image-labeling:17.0.9")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
